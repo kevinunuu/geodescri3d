@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geometría Descriptiva - Sistema Diédrico</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Century+Gothic:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="h-screen w-screen flex flex-col minimal-dot-grid relative">
+
+  <header class="glass-card z-20 mx-3 mt-3 px-3.5 py-2 rounded-2xl flex flex-wrap items-center justify-between gap-2.5 shrink-0 shadow-sm border border-white/90">
+    <div class="flex items-center gap-2.5">
+      <div class="h-8 w-8 rounded-xl bg-gradient-to-tr from-blue-700 via-blue-600 to-sky-400 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+        <span>G</span>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-[9px] font-mono tracking-widest text-blue-700 font-bold uppercase">SISTEMA DIÉDRICO</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Selector -->
+    <div class="flex items-center gap-1 bg-white/80 p-0.5 rounded-xl border border-blue-200/50 shadow-inner">
+      <button id="btnModeLines" class="mode-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-blue-600 text-white shadow-sm">Rectas</button>
+      <button id="btnModePlanes" class="mode-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-blue-700">Planos</button>
+      <button id="btnModeIntersections" class="mode-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-blue-700 flex items-center gap-1">
+        <i class="fa-solid fa-shapes text-[10px]"></i><span>Planos × Figuras</span>
+      </button>
+      <button id="btnModeLineSolid" class="mode-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:text-blue-700 flex items-center gap-1">
+        <i class="fa-solid fa-arrow-pointer text-[10px]"></i><span>Rectas × Figuras</span>
+      </button>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Line Selector -->
+      <div id="lineSelectorContainer" class="flex items-center">
+        <select id="selectLineType" class="bg-white/90 text-slate-800 font-medium text-xs px-2.5 py-1 rounded-lg border border-blue-200 outline-none hover:border-blue-400 focus:border-blue-500 transition shadow-sm">
+          <option value="oblique">1. Recta cualquiera (Oblicua)</option>
+          <option value="horizontal">2. Recta horizontal (∥ P.H.)</option>
+          <option value="frontal">3. Recta frontal (∥ P.V.)</option>
+          <option value="parallel_lt">4. Recta paralela a la L.T.</option>
+          <option value="point">5. Recta de punta (⊥ P.V.)</option>
+          <option value="vertical">6. Recta vertical (⊥ P.H.)</option>
+          <option value="profile">7. Recta de perfil (⊥ L.T.)</option>
+        </select>
+      </div>
+
+      <!-- Plane Selector -->
+      <div id="planeSelectorContainer" class="hidden flex items-center gap-1.5 animate-fade-slide">
+        <select id="selectPlaneType" class="bg-white/90 text-slate-800 font-medium text-xs px-2.5 py-1 rounded-lg border border-blue-200 outline-none hover:border-blue-400 transition shadow-sm hover:shadow">
+          <option value="canto">Plano de Canto</option>
+          <option value="proj_horizontal">Plano Vertical</option>
+          <option value="horizontal">Plano Horizontal</option>
+          <option value="frontal">Plano Frontal</option>
+          <option value="profile">Plano de Perfil</option>
+          <option value="parallel_lt">Plano Paralelo a L.T.</option>
+          <option value="oblique">Plano Oblicuo</option>
+        </select>
+        <button id="btnExpandPlane" class="btn-interactive px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-400 text-xs font-semibold flex items-center gap-1 transition shadow-sm">
+          <i id="expandPlaneIcon" class="fa-solid fa-expand text-[10px]"></i>
+          <span id="expandPlaneText">Superficie Extendida</span>
+        </button>
+        <button id="togglePlaneLabels" class="btn-interactive px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-400 text-xs font-semibold flex items-center gap-1 transition shadow-sm" title="Clic 1: Solo etiquetas del plano (A) | Clic 2: Todas (A, A₁, A₂) | Clic 3: Desactivar">
+          <i id="iconPlaneLabels" class="fa-solid fa-tag text-[10px]"></i>
+          <span id="textPlaneLabels">Etiquetas: (A)</span>
+        </button>
+      </div>
+
+      <!-- Plane x Solid Selector -->
+      <div id="intersectionSelectorContainer" class="hidden flex items-center gap-2 animate-fade-slide">
+        <select id="selectSolidType" class="bg-white/90 text-slate-800 font-medium text-[11px] px-2 py-1 rounded-lg border border-blue-200 outline-none shadow-sm hover:border-blue-400 transition">
+          <option value="prism_regular">Prisma Recto</option>
+          <option value="prism_irregular">Prisma Irregular</option>
+          <option value="prism_oblique">Prisma Oblicuo</option>
+          <option value="cylinder">Cilindro Recto</option>
+          <option value="cone">Cono Recto</option>
+        </select>
+        <select id="selectCuttingPlaneType" class="bg-white/90 text-slate-800 font-medium text-[11px] px-2 py-1 rounded-lg border border-blue-200 outline-none shadow-sm hover:border-blue-400 transition">
+          <option value="canto">Plano de Canto</option>
+          <option value="proj_horizontal">Plano Vertical</option>
+          <option value="horizontal">Plano Horizontal</option>
+          <option value="frontal">Plano Frontal</option>
+          <option value="profile">Plano de Perfil</option>
+          <option value="parallel_lt">Plano Paralelo a L.T.</option>
+          <option value="oblique">Plano Oblicuo</option>
+        </select>
+        <div class="flex items-center gap-1 bg-white/80 p-0.5 rounded-xl shadow-inner border border-blue-100">
+          <button id="toggleVisSolid" class="btn-interactive px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-cube"></i> Fig.</button>
+          <button id="toggleVisPlane" class="btn-interactive px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-layer-group"></i> Plano</button>
+          <button id="toggleVisSection" class="btn-interactive px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-draw-polygon"></i> Secc.</button>
+          <button id="toggleVisSectionLabels" class="btn-interactive px-2.5 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white flex items-center gap-1 shadow-sm" title="Clic 1: Solo etiquetas del plano (A) | Clic 2: Todas (A, A1, A2) | Clic 3: Desactivar">
+            <i id="iconSectionLabels" class="fa-solid fa-tag text-[9px]"></i>
+            <span id="textSectionLabels">Etiquetas: (A)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Line x Solid Selector -->
+      <div id="lineSolidSelectorContainer" class="hidden flex items-center gap-2">
+        <select id="selectLSSolidType" class="bg-white/90 text-slate-800 font-medium text-[11px] px-2 py-1 rounded-lg border border-blue-200 outline-none shadow-sm">
+          <option value="prism_regular">Prisma Recto</option>
+          <option value="prism_irregular">Prisma Irregular</option>
+          <option value="prism_oblique">Prisma Oblicuo</option>
+          <option value="cylinder">Cilindro Recto</option>
+          <option value="cone">Cono Recto</option>
+        </select>
+        <select id="selectLSLineType" class="bg-white/90 text-slate-800 font-medium text-[11px] px-2 py-1 rounded-lg border border-blue-200 outline-none shadow-sm">
+          <option value="oblique">1. Recta cualquiera (Oblicua)</option>
+          <option value="horizontal">2. Recta horizontal (∥ P.H.)</option>
+          <option value="frontal">3. Recta frontal (∥ P.V.)</option>
+          <option value="parallel_lt">4. Recta paralela a la L.T.</option>
+          <option value="point">5. Recta de punta (⊥ P.V.)</option>
+          <option value="vertical">6. Recta vertical (⊥ P.H.)</option>
+          <option value="profile">7. Recta de perfil (⊥ L.T.)</option>
+        </select>
+        <div class="flex items-center gap-1 bg-white/80 p-0.5 rounded-xl shadow-inner border border-blue-100">
+          <button id="toggleLSVisSolid" class="px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-cube"></i> Fig.</button>
+          <button id="toggleLSVisLine" class="px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-slash"></i> Recta</button>
+          <button id="toggleLSVisPierce" class="px-2 py-1 rounded-lg text-[10px] font-semibold transition bg-blue-600 text-white"><i class="fa-solid fa-crosshairs"></i> Cortes</button>
+        </div>
+      </div>
+
+      <!-- Figure Creator Button -->
+      <button id="btnOpenFigureModal" class="px-2.5 py-1 rounded-lg text-xs font-bold text-blue-700 bg-white/90 hover:bg-blue-50 border border-blue-200 flex items-center gap-1.5 transition shadow-sm" title="Crear y gestionar figuras 3D personalizadas">
+        <i class="fa-solid fa-shapes text-blue-600 text-[11px]"></i>
+        <span>Figuras</span>
+      </button>
+    </div>
+
+    <!-- Views -->
+    <div class="flex items-center gap-1 bg-white/80 p-0.5 rounded-xl border border-blue-200/50 shadow-inner">
+      <button id="btnView3D" class="view-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all bg-blue-600 text-white shadow-sm">3D</button>
+      <button id="btnViewFront" class="view-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all text-slate-600 hover:text-blue-700">Alzado</button>
+      <button id="btnViewTop" class="view-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all text-slate-600 hover:text-blue-700">Planta</button>
+      <div class="h-3.5 w-[1px] bg-blue-200 mx-0.5"></div>
+      <button id="btnToggleEpura" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-blue-700 hover:bg-blue-600/10 transition-all flex items-center gap-1"><i class="fa-solid fa-table-cells"></i> Proyección 2D</button>
+    </div>
+  </header>
+
+  <!-- Error Alert -->
+  <div id="errorAlertBanner" class="hidden absolute top-16 left-1/2 -translate-x-1/2 z-30 px-3.5 py-2 rounded-xl glass-card-red text-xs animate-error-pulse flex items-center gap-2.5 shadow-lg border border-red-300">
+    <i class="fa-solid fa-triangle-exclamation text-red-600"></i>
+    <span id="errorMessageText" class="font-medium text-red-900">Incoherencia geométrica.</span>
+    <button id="btnAutoCorrect" class="ml-1 px-2.5 py-0.5 rounded-md bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] transition shadow-sm">Corregir</button>
+  </div>
+
+  <main class="relative flex-1 w-full h-full overflow-hidden">
+    <div id="canvas3dContainer" class="w-full h-full"></div>
+
+    <!-- Left Legend -->
+    <div class="absolute top-3 left-3 z-10 max-w-xs transition-all duration-300">
+      <div class="glass-card p-3 rounded-2xl shadow-lg border border-white/90">
+        <div id="legendHeader" class="flex items-center justify-between pb-1.5 border-b border-blue-100 cursor-pointer select-none">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+            <span id="legendTitle" class="text-xs font-bold text-slate-800">Propiedades</span>
+          </div>
+          <button id="btnToggleLegend" class="w-5 h-5 text-slate-500 hover:text-blue-700"><i id="iconToggleLegend" class="fa-solid fa-chevron-up text-[9px]"></i></button>
+        </div>
+        <div id="legendContent" class="pt-2 text-xs space-y-2">
+          <div id="analysisDetails" class="text-[11px] space-y-1"></div>
+          <ul id="legendList" class="text-[11px] space-y-1 font-mono pt-1 border-t border-blue-100 max-h-48 overflow-y-auto custom-scroll"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Epura Modal -->
+    <div id="epuraModal" class="absolute top-3 right-3 z-10 glass-card p-3 rounded-2xl shadow-xl border border-blue-200/80 w-72 max-w-[calc(100vw-2rem)] transition-all transform duration-300">
+      <div class="flex items-center justify-between pb-1.5 border-b border-blue-100 mb-1.5">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-600"></span><h3 class="text-xs font-bold text-slate-800 uppercase">Proyección 2D</h3>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="btnExpandEpura" class="text-slate-400 hover:text-blue-600 text-xs p-1"><i id="iconExpandEpura" class="fa-solid fa-expand"></i></button>
+          <button id="btnCloseEpura" class="text-slate-400 hover:text-blue-600 text-xs p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div class="relative bg-white/95 rounded-xl border border-blue-200/70 p-1 flex items-center justify-center overflow-hidden shadow-inner">
+        <canvas id="epuraCanvas" width="260" height="180" class="w-full h-auto block"></canvas>
+      </div>
+    </div>
+
+    <!-- Watermark -->
+    <div class="fixed bottom-2.5 right-4 z-20 pointer-events-auto">
+      <div class="glass-card px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-sm border border-blue-200/60 text-[11px] font-mono text-blue-900/80 hover:text-blue-600 transition select-none">
+        <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+        <span class="text-slate-500 font-medium">By:</span>
+        <span class="font-bold text-blue-700 tracking-wide">Kevin Ullon</span>
+      </div>
+    </div>
+
+    <div id="coordsPanel" class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 w-[96%] max-w-3xl glass-card p-3 rounded-2xl shadow-xl border border-white/90 transition-all duration-300">
+      <div id="coordsHeader" class="flex items-center justify-between mb-1.5 pb-1.5 border-b border-blue-100 cursor-pointer select-none">
+        <div class="flex items-center gap-2">
+          <span id="coordsMainTitle" class="text-xs font-bold text-slate-800 uppercase">Puntos</span>
+          <span id="coordsSubtitle" class="text-[10px] font-mono text-slate-400 hidden sm:inline">(X: Desv., Y: Cota, Z: Alej.)</span>
+          <span id="coordsSummaryBadge" class="hidden text-[10px] font-mono bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold"></span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnToggleCoordLock" class="text-[10px] px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold transition flex items-center gap-1">
+            <span id="lockStatusIcon">🔓</span> <span id="lockStatusText">Ajuste libre</span>
+          </button>
+          <button id="btnResetCoords" class="text-[10px] px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 transition"><i class="fa-solid fa-rotate-left mr-0.5"></i> Defecto</button>
+          <button id="btnToggleCoords" class="w-5 h-5 text-slate-500"><i id="iconToggleCoords" class="fa-solid fa-chevron-down text-xs"></i></button>
+        </div>
+      </div>
+
+      <div id="coordsContent" class="transition-all duration-300">
+        <!-- Lines Sliders -->
+        <div id="lineSlidersGrid" class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div id="cardA1" class="bg-white/80 p-2 rounded-xl border border-blue-100 shadow-sm transition-colors">
+            <div class="flex justify-between items-center mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-700">Punto:</span>
+                <input id="inputNameP1" type="text" value="A" maxlength="3" class="point-name-input w-12 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="coordBadgeA1" class="text-[10px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="text-[9px] font-mono text-slate-500 flex justify-between items-center mb-0.5">
+                  <span class="font-bold">X (Desv.)</span>
+                  <input id="numA1X" type="number" step="0.5" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA1X" type="range" min="-8" max="8" step="0.5" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-blue-700 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Y (Cota)</span><span id="linkBadgeA1Y" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numA1Y" type="number" step="0.5" min="0.5" max="10" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA1Y" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-sky-600 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Z (Alej.)</span><span id="linkBadgeA1Z" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numA1Z" type="number" step="0.5" min="0.5" max="10" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA1Z" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+            </div>
+          </div>
+          <div id="cardA2" class="bg-white/80 p-2 rounded-xl border border-blue-100 shadow-sm transition-colors">
+            <div class="flex justify-between items-center mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-700">Punto:</span>
+                <input id="inputNameP2" type="text" value="B" maxlength="3" class="point-name-input w-12 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="coordBadgeA2" class="text-[10px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="text-[9px] font-mono text-slate-500 flex justify-between items-center mb-0.5">
+                  <span class="font-bold">X (Desv.)</span>
+                  <input id="numA2X" type="number" step="0.5" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA2X" type="range" min="-8" max="8" step="0.5" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-blue-700 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Y (Cota)</span><span id="linkBadgeA2Y" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numA2Y" type="number" step="0.5" min="0.5" max="10" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA2Y" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-sky-600 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Z (Alej.)</span><span id="linkBadgeA2Z" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numA2Z" type="number" step="0.5" min="0.5" max="10" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderA2Z" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plane Sliders -->
+        <div id="planeSlidersGrid" class="hidden grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <div class="flex justify-between items-center mb-1">
+              <div class="flex items-center gap-1">
+                <span class="text-[11px] font-bold text-slate-700">Punto:</span>
+                <input id="inputNamePlaneP1" type="text" value="A" class="point-name-input w-10 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="badgeP1" class="text-[9px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-1 text-[9px] font-mono">
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span>X</span><span id="linkBadgeP1X" class="hidden text-[8px]">🔗</span></span><input id="numP1X" type="number" step="0.5" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP1X" type="range" min="-7" max="7" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-blue-700">Y</span><span id="linkBadgeP1Y" class="hidden text-[8px]">🔗</span></span><input id="numP1Y" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP1Y" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-sky-600">Z</span><span id="linkBadgeP1Z" class="hidden text-[8px]">🔗</span></span><input id="numP1Z" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP1Z" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+            </div>
+          </div>
+          <div class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <div class="flex justify-between items-center mb-1">
+              <div class="flex items-center gap-1">
+                <span class="text-[11px] font-bold text-slate-700">Punto:</span>
+                <input id="inputNamePlaneP2" type="text" value="B" class="point-name-input w-10 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="badgeP2" class="text-[9px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-1 text-[9px] font-mono">
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span>X</span><span id="linkBadgeP2X" class="hidden text-[8px]">🔗</span></span><input id="numP2X" type="number" step="0.5" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP2X" type="range" min="-7" max="7" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-blue-700">Y</span><span id="linkBadgeP2Y" class="hidden text-[8px]">🔗</span></span><input id="numP2Y" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP2Y" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-sky-600">Z</span><span id="linkBadgeP2Z" class="hidden text-[8px]">🔗</span></span><input id="numP2Z" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP2Z" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+            </div>
+          </div>
+          <div class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <div class="flex justify-between items-center mb-1">
+              <div class="flex items-center gap-1">
+                <span class="text-[11px] font-bold text-slate-700">Punto:</span>
+                <input id="inputNamePlaneP3" type="text" value="C" class="point-name-input w-10 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="badgeP3" class="text-[9px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-1 text-[9px] font-mono">
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span>X</span><span id="linkBadgeP3X" class="hidden text-[8px]">🔗</span></span><input id="numP3X" type="number" step="0.5" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP3X" type="range" min="-7" max="7" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-blue-700">Y</span><span id="linkBadgeP3Y" class="hidden text-[8px]">🔗</span></span><input id="numP3Y" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP3Y" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+              <div>
+                <div class="flex justify-between items-center mb-0.5"><span class="flex items-center gap-0.5"><span class="text-sky-600">Z</span><span id="linkBadgeP3Z" class="hidden text-[8px]">🔗</span></span><input id="numP3Z" type="number" step="0.5" min="0.5" max="10" class="w-10 px-0.5 py-0.5 text-[9px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></div>
+                <input id="sliderP3Z" type="range" min="0.5" max="10" step="0.5" class="w-full">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solid x Plane Sliders -->
+        <div id="intersectionSlidersGrid" class="hidden grid grid-cols-2 md:grid-cols-5 gap-2.5">
+          <div id="grpCutHeight" class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <label class="text-[10px] font-mono flex justify-between items-center mb-1"><span>Cota Y₀</span><input id="numCutHeight" type="number" step="0.25" min="0.5" max="10.0" class="w-14 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></label>
+            <input id="sliderCutHeight" type="range" min="0.5" max="10.0" step="0.25" value="5.0" class="w-full">
+          </div>
+          <div id="grpCutDist" class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <label class="text-[10px] font-mono flex justify-between items-center mb-1"><span>Alej. Z₀</span><input id="numCutDist" type="number" step="0.25" min="0.5" max="10.0" class="w-14 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></label>
+            <input id="sliderCutDist" type="range" min="0.5" max="10.0" step="0.25" value="5.5" class="w-full">
+          </div>
+          <div id="grpCutX" class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <label class="text-[10px] font-mono flex justify-between items-center mb-1"><span>Desv. X₀</span><input id="numCutX" type="number" step="0.25" min="-5.0" max="5.0" class="w-14 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></label>
+            <input id="sliderCutX" type="range" min="-5.0" max="5.0" step="0.25" value="0.0" class="w-full">
+          </div>
+          <div id="grpCutAngle" class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <label class="text-[10px] font-mono flex justify-between items-center mb-1"><span>Áng. PV (α)</span><input id="numCutAngle" type="number" step="5" min="-85" max="85" class="w-14 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></label>
+            <input id="sliderCutAngle" type="range" min="-85" max="85" step="5" value="35" class="w-full">
+          </div>
+          <div id="grpCutAngleBeta" class="bg-white/80 p-2 rounded-xl border border-blue-100">
+            <label class="text-[10px] font-mono flex justify-between items-center mb-1"><span>Áng. PH (β)</span><input id="numCutAngleBeta" type="number" step="5" min="-85" max="85" class="w-14 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right"></label>
+            <input id="sliderCutAngleBeta" type="range" min="-85" max="85" step="5" value="30" class="w-full">
+          </div>
+        </div>
+
+        <!-- Solid x Line Sliders -->
+        <div id="lineSolidSlidersGrid" class="hidden grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div class="bg-white/80 p-2 rounded-xl border border-blue-100 shadow-sm transition-colors">
+            <div class="flex justify-between items-center mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-700">Punto:</span>
+                <input id="inputNameLSP1" type="text" value="P1" maxlength="3" class="point-name-input w-12 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="badgeLSP1" class="text-[10px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="text-[9px] font-mono text-slate-500 flex justify-between items-center mb-0.5">
+                  <span class="font-bold">X (Desv.)</span>
+                  <input id="numLSP1X" type="number" step="0.5" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP1X" type="range" min="-10" max="10" step="0.5" value="-6" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-blue-700 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Y (Cota)</span><span id="linkBadgeLSP1Y" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numLSP1Y" type="number" step="0.5" min="0.5" max="11" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP1Y" type="range" min="0.5" max="11" step="0.5" value="7" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-sky-600 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Z (Alej.)</span><span id="linkBadgeLSP1Z" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numLSP1Z" type="number" step="0.5" min="0.5" max="11" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP1Z" type="range" min="0.5" max="11" step="0.5" value="2" class="w-full">
+              </div>
+            </div>
+          </div>
+          <div class="bg-white/80 p-2 rounded-xl border border-blue-100 shadow-sm transition-colors">
+            <div class="flex justify-between items-center mb-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-slate-700">Punto:</span>
+                <input id="inputNameLSP2" type="text" value="P2" maxlength="3" class="point-name-input w-12 px-1 py-0.5 text-xs font-bold border border-blue-200 rounded text-center uppercase bg-white">
+              </div>
+              <span id="badgeLSP2" class="text-[10px] font-mono font-semibold text-blue-700"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="text-[9px] font-mono text-slate-500 flex justify-between items-center mb-0.5">
+                  <span class="font-bold">X (Desv.)</span>
+                  <input id="numLSP2X" type="number" step="0.5" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP2X" type="range" min="-10" max="10" step="0.5" value="6" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-blue-700 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Y (Cota)</span><span id="linkBadgeLSP2Y" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numLSP2Y" type="number" step="0.5" min="0.5" max="11" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP2Y" type="range" min="0.5" max="11" step="0.5" value="3" class="w-full">
+              </div>
+              <div>
+                <label class="text-[9px] font-mono text-sky-600 flex justify-between items-center mb-0.5">
+                  <span class="flex items-center gap-0.5"><span class="font-bold">Z (Alej.)</span><span id="linkBadgeLSP2Z" class="hidden text-[8px]">🔗</span></span>
+                  <input id="numLSP2Z" type="number" step="0.5" min="0.5" max="11" class="w-12 px-1 py-0.5 text-[10px] font-mono font-bold bg-white border border-blue-200 rounded text-right focus:outline-none focus:border-blue-500 shadow-inner">
+                </label>
+                <input id="sliderLSP2Z" type="range" min="0.5" max="11" step="0.5" value="9" class="w-full">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Figure Creator Modal -->
+    <!-- Figure Creator Modal with Live 3D Preview -->
+    <div id="figureModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-3 sm:p-5">
+      <div class="glass-card bg-white/95 rounded-2xl shadow-2xl border border-blue-200/90 w-full max-w-4xl max-h-[92vh] flex flex-col transition-all overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b border-blue-100 shrink-0">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shadow-sm">
+              <i class="fa-solid fa-shapes text-sm"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-slate-800">Diseñador Paramétrico de Figuras 3D</h3>
+              <p class="text-[10px] text-slate-500">Configura base (PH o PV), posición, desfases y dimensiones con vista 3D en vivo</p>
+            </div>
+          </div>
+          <button id="btnCloseFigureModal" class="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Body: 2 Columns -->
+        <div class="flex-1 overflow-y-auto custom-scroll p-4 md:p-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- Left Column: Interactive 3D Mini Viewport -->
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-cube text-blue-600"></i> Previsualización 3D en Vivo
+                </span>
+                <div class="flex items-center gap-1">
+                  <span id="badgeFigPreviewBase" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold border border-blue-200">Base en P.H.</span>
+                  <button id="btnResetFigPreviewCam" class="text-[10px] px-2 py-0.5 rounded-lg bg-white text-slate-600 hover:text-blue-700 border border-blue-200 shadow-sm transition" title="Centrar cámara">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 3D Canvas container -->
+              <div id="figPreviewContainer" class="w-full h-64 md:h-[380px] bg-slate-900/5 rounded-xl border border-blue-200/70 shadow-inner relative overflow-hidden flex items-center justify-center select-none cursor-grab active:cursor-grabbing">
+                <span class="text-[9px] text-slate-400/80 absolute bottom-2 left-2 pointer-events-none select-none">
+                  <i class="fa-solid fa-hand-pointer mr-1"></i>Arrastra para orbitar la vista
+                </span>
+              </div>
+            </div>
+
+            <!-- Right Column: Parameter Controls -->
+            <div class="space-y-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre de la Figura</label>
+                <input id="newFigName" type="text" placeholder="Ej: Pirámide Cuadrangular 8u" value="Mi Pirámide" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-blue-200 focus:outline-none focus:border-blue-500 bg-white shadow-inner font-medium">
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Tipo de Sólido</label>
+                  <select id="newFigType" class="w-full px-2 py-1.5 text-xs rounded-lg border border-blue-200 focus:outline-none focus:border-blue-500 bg-white shadow-sm font-medium">
+                    <option value="pyramid_reg" selected>Pirámide Regular</option>
+                    <option value="pyramid_irregular">Pirámide Irregular</option>
+                    <option value="prism_reg">Prisma Recto</option>
+                    <option value="prism_oblique">Prisma Oblicuo</option>
+                    <option value="cylinder">Cilindro Recto</option>
+                    <option value="cone">Cono Recto</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">Plano de la Base</label>
+                  <select id="newFigBasePlane" class="w-full px-2 py-1.5 text-xs rounded-lg border border-blue-200 focus:outline-none focus:border-blue-500 bg-white shadow-sm font-medium">
+                    <option value="PH" selected>Base en P.H. (Horiz.)</option>
+                    <option value="PV">Base en P.V. (Frontal)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Base sides and Radius -->
+              <div id="grpFigSides" class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Lados de la base (N)</label>
+                  <select id="newFigSides" class="w-full px-2 py-1 text-xs rounded-lg border border-blue-200 bg-white font-mono shadow-sm">
+                    <option value="3">3 (Triangular)</option>
+                    <option value="4" selected>4 (Cuadrangular)</option>
+                    <option value="5">5 (Pentagonal)</option>
+                    <option value="6">6 (Hexagonal)</option>
+                    <option value="8">8 (Octogonal)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Radio base (R)</label>
+                  <input id="newFigRadius" type="number" step="0.2" min="1.0" max="6.0" value="3.2" class="w-full px-2 py-1 text-xs rounded-lg border border-blue-200 bg-white font-mono shadow-sm">
+                </div>
+              </div>
+
+              <!-- Height and Slants -->
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Altura total (H)</label>
+                  <input id="newFigHeight" type="number" step="0.5" min="2.0" max="14.0" value="8.0" class="w-full px-2 py-1 text-xs rounded-lg border border-blue-200 bg-white font-mono shadow-sm">
+                </div>
+                <div id="grpFigSlant" class="hidden">
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Inclinación (ΔX, ΔZ)</label>
+                  <div class="flex gap-1">
+                    <input id="newFigSlantX" type="number" step="0.5" value="2.0" class="w-1/2 px-1 py-1 text-xs rounded border border-blue-200 font-mono text-center shadow-sm" title="ΔX">
+                    <input id="newFigSlantZ" type="number" step="0.5" value="-2.0" class="w-1/2 px-1 py-1 text-xs rounded border border-blue-200 font-mono text-center shadow-sm" title="ΔZ">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Apex adjustment (for Pirámide Irregular) -->
+              <div id="grpFigApex" class="hidden p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-purple-600"></span>
+                    <span class="text-[10px] font-bold text-purple-900 uppercase tracking-wider">Vértice / Cúspide (V)</span>
+                  </div>
+                  <button type="button" id="btnCenterApex" class="text-[9px] px-2 py-0.5 rounded bg-white text-purple-700 hover:bg-purple-100 border border-purple-200 transition font-semibold flex items-center gap-1 shadow-2xs" title="Centrar vértice sobre la base">
+                    <i class="fa-solid fa-crosshairs text-[8px]"></i> Centrar
+                  </button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <div>
+                    <label class="block text-[9px] font-mono text-slate-600 mb-0.5">Vx (Desv.)</label>
+                    <input id="newFigApexX" type="number" step="0.2" value="0.0" class="w-full px-1.5 py-1 text-xs rounded border border-purple-200 bg-white font-mono text-right shadow-sm">
+                  </div>
+                  <div>
+                    <label class="block text-[9px] font-mono text-purple-700 mb-0.5">Vy (Cota)</label>
+                    <input id="newFigApexY" type="number" step="0.2" value="8.0" class="w-full px-1.5 py-1 text-xs rounded border border-purple-200 bg-white font-mono text-right shadow-sm">
+                  </div>
+                  <div>
+                    <label class="block text-[9px] font-mono text-sky-600 mb-0.5">Vz (Alej.)</label>
+                    <input id="newFigApexZ" type="number" step="0.2" value="5.5" class="w-full px-1.5 py-1 text-xs rounded border border-purple-200 bg-white font-mono text-right shadow-sm">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Base Points Adjustments (for Prisms & Pyramids) -->
+              <div id="grpFigBasePoints" class="p-2.5 rounded-xl bg-slate-50/90 border border-blue-100 space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Puntos de la Base</span>
+                    <span id="badgeBaseCoordLabels" class="text-[9px] font-mono text-blue-700 bg-blue-100/70 px-1.5 py-0.2 rounded font-semibold">(X, Z) en PH</span>
+                  </div>
+                  <button type="button" id="btnResetBasePoints" class="text-[9px] px-2 py-0.5 rounded bg-white text-blue-700 hover:bg-blue-100 border border-blue-200 transition font-semibold flex items-center gap-1 shadow-2xs" title="Restablecer puntos a polígono regular">
+                    <i class="fa-solid fa-arrows-rotate text-[8px]"></i> Polígono Regular
+                  </button>
+                </div>
+                <div id="figBasePointsTable" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto custom-scroll pr-1">
+                  <!-- Injected dynamically for points A, B, C, D... -->
+                </div>
+              </div>
+
+              <!-- Base Offset & Positioning -->
+              <div class="p-2.5 rounded-xl bg-blue-50/60 border border-blue-100 space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] font-bold text-blue-900 uppercase tracking-wider">Desfase de Base</span>
+                  <span class="text-[9px] text-slate-500 font-mono">(Posición en el diedro)</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <div>
+                    <label class="block text-[9px] font-mono text-slate-600 mb-0.5">Desv. (X₀)</label>
+                    <input id="newFigPosX" type="number" step="0.5" min="-6" max="6" value="0.0" class="w-full px-1.5 py-1 text-xs rounded border border-blue-200 bg-white font-mono text-right shadow-sm" title="Desviación lateral respecto al centro">
+                  </div>
+                  <div>
+                    <label class="block text-[9px] font-mono text-blue-700 mb-0.5">Cota PH (Y₀)</label>
+                    <input id="newFigPosY" type="number" step="0.5" min="0" max="10" value="0.0" class="w-full px-1.5 py-1 text-xs rounded border border-blue-200 bg-white font-mono text-right shadow-sm" title="Desfase respecto al Plano Horizontal">
+                  </div>
+                  <div>
+                    <label class="block text-[9px] font-mono text-sky-600 mb-0.5">Alej. PV (Z₀)</label>
+                    <input id="newFigPosZ" type="number" step="0.5" min="0" max="10" value="5.5" class="w-full px-1.5 py-1 text-xs rounded border border-blue-200 bg-white font-mono text-right shadow-sm" title="Desfase respecto al Plano Vertical">
+                  </div>
+                </div>
+              </div>
+
+              <button id="btnSaveFigure" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition transform active:scale-98">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>Guardar Figura y Usar en Escena</span>
+              </button>
+
+              <!-- Saved figures list -->
+              <div class="pt-2 border-t border-blue-100">
+                <h4 class="text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Figuras Guardadas</span>
+                  <span id="badgeCustomCount" class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono font-semibold">0</span>
+                </h4>
+                <div id="customFiguresList" class="space-y-1.5 max-h-36 overflow-y-auto pr-1 custom-scroll text-xs">
+                  <p class="text-slate-400 text-center text-[11px] py-2">No has guardado figuras aún.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+
+  <!-- Scripts Modulares GeoDescri3D -->
+  <script src="js/state.js"></script>
+  <script src="js/math.js"></script>
+  <script src="js/scene3d.js"></script>
+  <script src="js/epura.js"></script>
+  <script src="js/figure-maker.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
