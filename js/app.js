@@ -219,6 +219,7 @@ function syncPlaneSliders() {
   const n1 = document.getElementById('inputNamePlaneP1'); if (n1) n1.value = state.pointNames.p1;
   const n2 = document.getElementById('inputNamePlaneP2'); if (n2) n2.value = state.pointNames.p2;
   const n3 = document.getElementById('inputNamePlaneP3'); if (n3) n3.value = state.pointNames.p3;
+  const selPT = document.getElementById('selectPlaneType'); if (selPT) selPT.value = state.planeType;
   syncPlaneLabels();
 }
 
@@ -242,6 +243,8 @@ function syncIntersectionSliders() {
   const nX = document.getElementById('numCutX'); if (nX) nX.value = cfg.cutX;
   const nA = document.getElementById('numCutAngle'); if (nA) nA.value = cfg.cutAngle;
   const nB = document.getElementById('numCutAngleBeta'); if (nB) nB.value = cfg.cutAngleBeta;
+  const selCPT = document.getElementById('selectCuttingPlaneType'); if (selCPT) selCPT.value = cfg.cuttingPlaneType;
+  const selST = document.getElementById('selectSolidType'); if (selST) selST.value = cfg.solidType;
 }
 
 function syncLineSolidSliders() {
@@ -254,6 +257,7 @@ function syncLineSolidSliders() {
   const n1 = document.getElementById('inputNameLSP1'); if (n1) n1.value = (state.lineSolid.names && state.lineSolid.names.p1) || 'P1';
   const n2 = document.getElementById('inputNameLSP2'); if (n2) n2.value = (state.lineSolid.names && state.lineSolid.names.p2) || 'P2';
   const selLT = document.getElementById('selectLSLineType'); if (selLT) selLT.value = state.lineSolid.lineType || 'oblique';
+  const selLSS = document.getElementById('selectLSSolidType'); if (selLSS) selLSS.value = state.lineSolid.solidType || 'cylinder';
   syncLineSolidLabels();
   updateCoupledBadges();
 }
@@ -268,12 +272,13 @@ function syncLineSolidLabels() {
 // --- Conmutación de Modos de la Aplicación ---
 
 function switchMode(m) {
+  if (typeof stopVMAnimation === 'function') stopVMAnimation();
   state.mode = m;
   ['btnModeLines', 'btnModePlanes', 'btnModeIntersections', 'btnModeLineSolid'].forEach(id => {
     const active = id.includes(m === 'lines' ? 'Lines' : m === 'planes' ? 'Planes' : m === 'intersections' ? 'Intersections' : 'LineSolid');
     const el = document.getElementById(id);
     if (el) {
-      el.className = `mode-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-blue-700'}`;
+      el.className = `mode-btn px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 ${active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-blue-700'}`;
     }
   });
   ['lineSelectorContainer', 'planeSelectorContainer', 'intersectionSelectorContainer', 'lineSolidSelectorContainer'].forEach(id => {
@@ -304,6 +309,16 @@ function switchMode(m) {
   else if (m === 'planes') syncPlaneSliders();
   else if (m === 'intersections') { syncIntersectionSliders(); updateIntersectionSliderVisibility(); }
   else if (m === 'line_solid') syncLineSolidSliders();
+
+  const vmCtrl = document.getElementById('epuraVMControls');
+  const modeBadge = document.getElementById('epuraModeBadge');
+  if (vmCtrl) vmCtrl.classList.toggle('hidden', m !== 'planes' && m !== 'intersections');
+  if (modeBadge) {
+    modeBadge.classList.remove('hidden');
+    modeBadge.textContent = m === 'planes' ? 'Planos' : (m === 'intersections' ? 'Sección Sólido' : (m === 'lines' ? 'Rectas' : 'Recta × Sólido'));
+  }
+
+  if (typeof window.updateVMMethodButtons === 'function') window.updateVMMethodButtons();
   updateScene();
 }
 
@@ -577,6 +592,7 @@ window.onload = function() {
         syncPlaneSliders();
       }
       updateCoupledBadges();
+      if (typeof window.updateVMMethodButtons === 'function') window.updateVMMethodButtons();
       updateScene();
     });
   }
@@ -594,6 +610,7 @@ window.onload = function() {
     selCutPlane.addEventListener('change', (e) => {
       state.intersection.cuttingPlaneType = e.target.value;
       updateIntersectionSliderVisibility();
+      if (typeof window.updateVMMethodButtons === 'function') window.updateVMMethodButtons();
       updateScene();
     });
   }
@@ -733,29 +750,17 @@ window.onload = function() {
     });
   }
 
-  // Epura controls
+  // Epura controls & Fullscreen
   const btnTogEpura = document.getElementById('btnToggleEpura');
   if (btnTogEpura) {
     btnTogEpura.addEventListener('click', () => {
-      document.getElementById('epuraModal').classList.toggle('hidden');
-    });
-  }
-
-  const btnExpEpura = document.getElementById('btnExpandEpura');
-  if (btnExpEpura) {
-    btnExpEpura.addEventListener('click', () => {
-      state.epuraExpanded = !state.epuraExpanded;
       const em = document.getElementById('epuraModal');
-      if (state.epuraExpanded) {
-        em.classList.replace('top-3', 'top-1/2');
-        em.classList.replace('right-3', 'left-1/2');
-        em.classList.add('-translate-x-1/2', '-translate-y-1/2', 'w-[94vw]', 'max-w-2xl');
-      } else {
-        em.classList.replace('top-1/2', 'top-3');
-        em.classList.replace('left-1/2', 'right-3');
-        em.classList.remove('-translate-x-1/2', '-translate-y-1/2', 'w-[94vw]', 'max-w-2xl');
+      if (em) {
+        em.classList.toggle('hidden');
+        if (!em.classList.contains('hidden')) {
+          drawEpura2D();
+        }
       }
-      drawEpura2D();
     });
   }
 
@@ -765,6 +770,525 @@ window.onload = function() {
       document.getElementById('epuraModal').classList.add('hidden');
     });
   }
+
+  // Gestor unificado de tamaño y posición de la ventana del Épura (evita conflictos al combinar modos)
+  function setEpuraWindowMode(targetMode) {
+    const em = document.getElementById('epuraModal');
+    const icFull = document.getElementById('iconFullscreenEpura');
+    const icExp = document.getElementById('iconExpandEpura');
+    const btnExp = document.getElementById('btnExpandEpura');
+    const btnFull = document.getElementById('btnFullscreenEpura');
+    if (!em) return;
+
+    em.style.width = '';
+    em.style.height = '';
+
+    if (targetMode === 'fullscreen') {
+      state.epuraFullscreen = true;
+      state.epuraExpanded = false;
+
+      em.classList.remove('-translate-x-1/2', '-translate-y-1/2', 'top-1/2', 'left-1/2', 'w-[94vw]', 'max-w-2xl', 'top-2', 'right-2', 'top-3', 'right-3');
+      em.classList.add('epura-fullscreen');
+
+      if (icFull) { icFull.classList.remove('fa-maximize'); icFull.classList.add('fa-minimize'); }
+      if (icExp) { icExp.classList.remove('fa-down-left-and-up-right-to-center'); icExp.classList.add('fa-up-right-and-down-left-from-center'); }
+      if (btnFull) btnFull.title = 'Salir de pantalla casi completa';
+      if (btnExp) btnExp.title = 'Cambiar a ventana mediana';
+    } else if (targetMode === 'expanded') {
+      state.epuraFullscreen = false;
+      state.epuraExpanded = true;
+
+      em.classList.remove('epura-fullscreen');
+      em.classList.remove('top-2', 'right-2', 'top-3', 'right-3');
+      em.classList.add('top-1/2', 'left-1/2', '-translate-x-1/2', '-translate-y-1/2', 'w-[94vw]', 'max-w-2xl');
+
+      if (icFull) { icFull.classList.remove('fa-minimize'); icFull.classList.add('fa-maximize'); }
+      if (icExp) { icExp.classList.remove('fa-up-right-and-down-left-from-center'); icExp.classList.add('fa-down-left-and-up-right-to-center'); }
+      if (btnFull) btnFull.title = 'Pantalla casi completa';
+      if (btnExp) btnExp.title = 'Restaurar ventana compacta';
+    } else {
+      state.epuraFullscreen = false;
+      state.epuraExpanded = false;
+
+      em.classList.remove('epura-fullscreen');
+      em.classList.remove('top-1/2', 'left-1/2', '-translate-x-1/2', '-translate-y-1/2', 'w-[94vw]', 'max-w-2xl');
+      em.classList.add('top-2', 'right-2', 'sm:top-3', 'sm:right-3');
+
+      if (icFull) { icFull.classList.remove('fa-minimize'); icFull.classList.add('fa-maximize'); }
+      if (icExp) { icExp.classList.remove('fa-down-left-and-up-right-to-center'); icExp.classList.add('fa-up-right-and-down-left-from-center'); }
+      if (btnFull) btnFull.title = 'Pantalla casi completa';
+      if (btnExp) btnExp.title = 'Ampliar ventana';
+    }
+
+    drawEpura2D();
+    setTimeout(() => { drawEpura2D(); }, 120);
+  }
+
+  const btnExpEpura = document.getElementById('btnExpandEpura');
+  if (btnExpEpura) {
+    btnExpEpura.addEventListener('click', () => {
+      setEpuraWindowMode(state.epuraExpanded ? 'compact' : 'expanded');
+    });
+  }
+
+  // Fullscreen casi completa
+  const btnFullEpura = document.getElementById('btnFullscreenEpura');
+  if (btnFullEpura) {
+    btnFullEpura.addEventListener('click', () => {
+      setEpuraWindowMode(state.epuraFullscreen ? 'compact' : 'fullscreen');
+    });
+  }
+
+  window.addEventListener('resize', () => {
+    if (state.epuraFullscreen || state.epuraExpanded) {
+      drawEpura2D();
+    }
+  });
+
+  // Zoom buttons
+  const zoomBadge = document.getElementById('epuraZoomBadge');
+  const updateZoomUI = () => {
+    if (zoomBadge) zoomBadge.textContent = `${Math.round(state.epuraZoom * 100)}%`;
+    drawEpura2D();
+  };
+
+  const btnZIn = document.getElementById('btnEpuraZoomIn');
+  if (btnZIn) {
+    btnZIn.addEventListener('click', () => {
+      state.epuraZoom = Math.min(4.5, (state.epuraZoom || 1.0) * 1.2);
+      updateZoomUI();
+    });
+  }
+
+  const btnZOut = document.getElementById('btnEpuraZoomOut');
+  if (btnZOut) {
+    btnZOut.addEventListener('click', () => {
+      state.epuraZoom = Math.max(0.35, (state.epuraZoom || 1.0) / 1.2);
+      updateZoomUI();
+    });
+  }
+
+  const btnZReset = document.getElementById('btnEpuraResetView');
+  if (btnZReset) {
+    btnZReset.addEventListener('click', () => {
+      state.epuraZoom = 1.0;
+      state.epuraPan = { x: 0, y: 0 };
+      updateZoomUI();
+    });
+  }
+
+  // Canvas Drag to Pan
+  const cCanvas = document.getElementById('epuraCanvas');
+  if (cCanvas) {
+    let isPanning = false, panStart = { x: 0, y: 0 };
+    cCanvas.addEventListener('mousedown', (e) => {
+      isPanning = true;
+      panStart = { x: e.clientX - (state.epuraPan ? state.epuraPan.x : 0), y: e.clientY - (state.epuraPan ? state.epuraPan.y : 0) };
+      const tooltip = document.getElementById('epuraHoverTooltip');
+      if (tooltip) tooltip.classList.add('hidden');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      if (!state.epuraPan) state.epuraPan = { x: 0, y: 0 };
+      state.epuraPan.x = e.clientX - panStart.x;
+      state.epuraPan.y = e.clientY - panStart.y;
+      drawEpura2D();
+    });
+    window.addEventListener('mouseup', () => { isPanning = false; });
+
+    // Interactive Hover Tooltip for Geometric Details & Measurements
+    cCanvas.addEventListener('mousemove', (e) => {
+      if (isPanning) return;
+      const tooltip = document.getElementById('epuraHoverTooltip');
+      if (!tooltip) return;
+      const rect = cCanvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const targets = window.epuraHoverTargets || [];
+      let best = null, bestDist = Infinity;
+      for (const t of targets) {
+        const d = Math.hypot(mx - t.x, my - t.y);
+        if (d <= t.r && d < bestDist) {
+          best = t;
+          bestDist = d;
+        }
+      }
+      if (best) {
+        tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${best.title}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.join('<br>')}</div>`;
+        const tipW = 220, tipH = 65;
+        const left = Math.max(10, Math.min(rect.width - tipW, mx + 14));
+        const top = Math.max(10, Math.min(rect.height - tipH, my + 14));
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+        tooltip.classList.remove('hidden');
+      } else {
+        tooltip.classList.add('hidden');
+      }
+    });
+    cCanvas.addEventListener('mouseleave', () => {
+      const tooltip = document.getElementById('epuraHoverTooltip');
+      if (tooltip) tooltip.classList.add('hidden');
+    });
+
+    // Wheel to Zoom
+    cCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      state.epuraZoom = Math.max(0.35, Math.min(4.5, (state.epuraZoom || 1.0) * factor));
+      updateZoomUI();
+    }, { passive: false });
+
+    // Touch support (Pan & Pinch-to-Zoom en pantallas móviles y táctiles)
+    let touchStart = { x: 0, y: 0 }, initDist = 0, touchMoved = false, touchStartTime = 0;
+    cCanvas.addEventListener('touchstart', (e) => {
+      touchMoved = false;
+      touchStartTime = Date.now();
+      if (!state.epuraPan) state.epuraPan = { x: 0, y: 0 };
+      if (e.touches.length === 1) {
+        touchStart = { x: e.touches[0].clientX - state.epuraPan.x, y: e.touches[0].clientY - state.epuraPan.y };
+      } else if (e.touches.length === 2) {
+        initDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      }
+    }, { passive: false });
+
+    cCanvas.addEventListener('touchmove', (e) => {
+      e.preventDefault(); // Evita scroll o rebote nativo de la página
+      touchMoved = true;
+      if (!state.epuraPan) state.epuraPan = { x: 0, y: 0 };
+      if (e.touches.length === 1) {
+        state.epuraPan.x = e.touches[0].clientX - touchStart.x;
+        state.epuraPan.y = e.touches[0].clientY - touchStart.y;
+        drawEpura2D();
+      } else if (e.touches.length === 2 && initDist > 0) {
+        const curDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        const factor = curDist / initDist;
+        state.epuraZoom = Math.max(0.35, Math.min(4.5, (state.epuraZoom || 1.0) * factor));
+        initDist = curDist;
+        updateZoomUI();
+      }
+    }, { passive: false });
+
+    cCanvas.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        // Detector de toques/taps rápidos para mostrar tooltip en dispositivos móviles
+        if (!touchMoved && (Date.now() - touchStartTime < 350) && e.changedTouches.length === 1) {
+          const t = e.changedTouches[0];
+          const rect = cCanvas.getBoundingClientRect();
+          const mx = t.clientX - rect.left;
+          const my = t.clientY - rect.top;
+          const targets = window.epuraHoverTargets || [];
+          let best = null, bestDist = Infinity;
+          for (const target of targets) {
+            const d = Math.hypot(mx - target.x, my - target.y);
+            if (d <= (target.r + 10) && d < bestDist) {
+              best = target;
+              bestDist = d;
+            }
+          }
+          const tooltip = document.getElementById('epuraHoverTooltip');
+          if (tooltip) {
+            if (best) {
+              tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${best.title}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.join('<br>')}</div>`;
+              const tipW = 200, tipH = 60;
+              const left = Math.max(6, Math.min(rect.width - tipW - 6, mx - tipW / 2));
+              const top = Math.max(6, my - tipH - 12);
+              tooltip.style.left = `${left}px`;
+              tooltip.style.top = `${top}px`;
+              tooltip.classList.remove('hidden');
+              setTimeout(() => { if (tooltip) tooltip.classList.add('hidden'); }, 3500);
+            } else {
+              tooltip.classList.add('hidden');
+            }
+          }
+        }
+        initDist = 0;
+      } else if (e.touches.length === 1) {
+        initDist = 0;
+        if (!state.epuraPan) state.epuraPan = { x: 0, y: 0 };
+        touchStart = { x: e.touches[0].clientX - state.epuraPan.x, y: e.touches[0].clientY - state.epuraPan.y };
+      }
+    });
+  }
+
+  // --- Verdadera Magnitud (V.M.) Animation Controller ---
+  let vmAnimRAF = null;
+  let vmAnimTimeout = null;
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function updatePlayAnimButtonUI(isPlaying) {
+    const btn = document.getElementById('btnVMPlayAnim');
+    const icon = document.getElementById('iconVMPlayAnim');
+    const text = document.getElementById('textVMPlayAnim');
+    if (!btn || !icon || !text) return;
+    if (isPlaying) {
+      btn.className = "pill-btn px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-500 hover:bg-rose-600 text-white flex items-center gap-1 shadow-2xs transition active:scale-95";
+      icon.className = "fa-solid fa-stop text-[8px]";
+      text.textContent = "Detener";
+    } else {
+      btn.className = "pill-btn px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1 shadow-2xs transition active:scale-95";
+      icon.className = "fa-solid fa-play text-[8px]";
+      text.textContent = "Animar (1 al 6)";
+    }
+  }
+
+  function stopVMAnimation() {
+    if (vmAnimRAF) {
+      cancelAnimationFrame(vmAnimRAF);
+      vmAnimRAF = null;
+    }
+    if (vmAnimTimeout) {
+      clearTimeout(vmAnimTimeout);
+      vmAnimTimeout = null;
+    }
+    state.vmIsPlaying = false;
+    state.vmAnimProgress = 1.0;
+    state.vmAnimActiveStep = 0;
+    updatePlayAnimButtonUI(false);
+  }
+
+  function animateVMStep(targetStep, onComplete) {
+    if (vmAnimRAF) {
+      cancelAnimationFrame(vmAnimRAF);
+      vmAnimRAF = null;
+    }
+    state.vmAnimActiveStep = targetStep;
+    state.vmAnimProgress = 0.0;
+    state.vmStep = targetStep;
+
+    // Actualizar estilo visual de los botones de pasos
+    [0, 1, 2, 3, 4, 5, 6].forEach(i => {
+      const el = document.getElementById(i === 0 ? 'btnVMStepAll' : `btnVMStep${i}`);
+      if (el) {
+        el.className = `pill-btn px-1.5 py-0.5 rounded-md text-[9px] ${targetStep === i ? 'font-bold bg-blue-600 text-white shadow-2xs ring-1 ring-blue-300' : 'font-medium bg-slate-100 text-slate-600 hover:bg-blue-50'}`;
+      }
+    });
+
+    const duration = 900;
+    const startTime = performance.now();
+
+    function frame(now) {
+      const raw = Math.min(1.0, (now - startTime) / duration);
+      state.vmAnimProgress = easeOutCubic(raw);
+      drawEpura2D();
+      if (raw < 1.0) {
+        vmAnimRAF = requestAnimationFrame(frame);
+      } else {
+        state.vmAnimProgress = 1.0;
+        drawEpura2D();
+        vmAnimRAF = null;
+        if (onComplete) onComplete();
+      }
+    }
+    vmAnimRAF = requestAnimationFrame(frame);
+  }
+
+  function playVMFullSequence() {
+    stopVMAnimation();
+    const isPlaneMode = (state.mode === 'planes');
+    const isInterMode = (state.mode === 'intersections');
+    const currentType = isPlaneMode ? state.planeType : (isInterMode ? state.intersection.cuttingPlaneType : null);
+    const allowsAbat = (currentType === 'canto' || currentType === 'proj_horizontal' || currentType === 'proj_vertical' || currentType === 'oblique' || currentType === 'parallel_lt');
+    const allowsGiro = (currentType === 'canto' || currentType === 'proj_horizontal' || currentType === 'proj_vertical');
+    if (!allowsAbat && !allowsGiro) return;
+
+    if (state.vmMethod === 'none') {
+      setVMMethod(allowsAbat ? 'abatimiento' : (allowsGiro ? 'giro' : 'none'));
+    }
+    state.vmIsPlaying = true;
+    updatePlayAnimButtonUI(true);
+
+    const runStep = (stepIdx) => {
+      if (!state.vmIsPlaying) return;
+      animateVMStep(stepIdx, () => {
+        if (!state.vmIsPlaying) return;
+        if (stepIdx < 6) {
+          vmAnimTimeout = setTimeout(() => {
+            runStep(stepIdx + 1);
+          }, 350);
+        } else {
+          // Secuencia completa terminada: pausa breve y muestra todo
+          vmAnimTimeout = setTimeout(() => {
+            stopVMAnimation();
+            setVMStep(0);
+          }, 700);
+        }
+      });
+    };
+
+    runStep(1);
+  }
+
+  // VM Method Selection
+  const updateStepPillLabels = (m) => {
+    const s1 = document.getElementById('btnVMStep1');
+    const s2 = document.getElementById('btnVMStep2');
+    const s3 = document.getElementById('btnVMStep3');
+    const s4 = document.getElementById('btnVMStep4');
+    const s5 = document.getElementById('btnVMStep5');
+    const s6 = document.getElementById('btnVMStep6');
+    if (!s1 || !s2 || !s3 || !s4 || !s5 || !s6) return;
+    const currentType = (state.mode === 'planes') ? state.planeType : state.intersection.cuttingPlaneType;
+    const isVertical = (currentType === 'proj_horizontal');
+
+    if (m === 'giro') {
+      if (isVertical) {
+        s1.textContent = '1. Centro E (LT)';
+        s2.textContent = '2. Cálculo R (PH)';
+        s3.textContent = '3. Rotación PH';
+        s4.textContent = '4. Cota Y // LT';
+        s5.textContent = '5. Subida PV';
+        s6.textContent = '6. V.M. (arriba)';
+        s1.title = 'Paso 1: Elección del eje vertical E (⊥ al PH) apoyado en la Línea de Tierra (LT)';
+        s2.title = 'Paso 2: Cálculo del radio R = √(Δx² + z²) mediante triángulo rectángulo en PH';
+        s3.title = 'Paso 3: Rotación física en PH con compás desde los puntos hasta la Línea de Tierra';
+        s4.title = 'Paso 4: Trayectorias en PV. Como el eje es vertical, la cota Y es constante (y\'=y)';
+        s5.title = 'Paso 5: Líneas de correspondencia verticales que suben desde LT y fijan los vértices en PV';
+        s6.title = 'Paso 6: Polígono girado en Verdadera Magnitud (V.M.) arriba en el Plano Vertical (PV)';
+      } else {
+        s1.textContent = '1. Centro E (LT)';
+        s2.textContent = '2. Cálculo R (PV)';
+        s3.textContent = '3. Rotación PV';
+        s4.textContent = '4. Alej. Z // LT';
+        s5.textContent = '5. Caída PH';
+        s6.textContent = '6. V.M. (abajo)';
+        s1.title = 'Paso 1: Elección del eje de punta E (⊥ al PV) apoyado en la Línea de Tierra (LT)';
+        s2.title = 'Paso 2: Cálculo del radio R = √(Δx² + y²) mediante triángulo rectángulo en PV';
+        s3.title = 'Paso 3: Rotación física en PV con compás desde los puntos hasta la Línea de Tierra';
+        s4.title = 'Paso 4: Trayectorias en PH. Como el eje es de punta, el alejamiento Z es constante (z\'=z)';
+        s5.title = 'Paso 5: Líneas de correspondencia verticales que caen desde LT y fijan los vértices en PH';
+        s6.title = 'Paso 6: Polígono girado en Verdadera Magnitud (V.M.) abajo en el Plano Horizontal (PH)';
+      }
+    } else {
+      s1.textContent = '1. Charnela';
+      s2.textContent = '2. Cotas PV';
+      s3.textContent = '3. Perpendiculares';
+      s4.textContent = '4. Triángulo V.M.';
+      s5.textContent = '5. Arcos';
+      s6.textContent = '6. V.M.';
+      s1.title = 'Paso 1: Traza horizontal α₁ como charnela';
+      s2.title = 'Paso 2: Medición de cotas verticales en PV desde la Línea de Tierra (LT)';
+      s3.title = 'Paso 3: Perpendiculares desde cada punto en PH hacia la charnela (90°)';
+      s4.title = 'Paso 4: Triángulo de rebatimiento y radio R = √(d² + cota²)';
+      s5.title = 'Paso 5: Arcos de compás con centro en el pie A₀';
+      s6.title = 'Paso 6: Polígono en Verdadera Magnitud (V.M.)';
+    }
+  };
+
+  const updateVMMethodButtons = () => {
+    const isPlaneMode = (state.mode === 'planes');
+    const isInterMode = (state.mode === 'intersections');
+    const btnNone = document.getElementById('btnVMMethodNone');
+    const btnAbat = document.getElementById('btnVMMethodAbat');
+    const btnGiro = document.getElementById('btnVMMethodGiro');
+    const stepsRow = document.getElementById('epuraVMStepsRow');
+    if (!btnNone || !btnAbat || !btnGiro) return;
+
+    if (!isPlaneMode && !isInterMode) return;
+
+    const currentType = isPlaneMode ? state.planeType : state.intersection.cuttingPlaneType;
+
+    // Reglas de disponibilidad de métodos de V.M. por tipo de plano:
+    // 1. Horizontal, Frontal y Perfil: NO admiten ni Abatimiento ni Giro (V.M. directa en PH, PV o PP)
+    // 2. Oblicuo y Paralelo a LT: SOLO admiten Abatimiento (Giro deshabilitado)
+    // 3. Canto y Vertical: admiten tanto Abatimiento como Giro
+    const allowsAbat = (currentType === 'canto' || currentType === 'proj_horizontal' || currentType === 'proj_vertical' || currentType === 'oblique' || currentType === 'parallel_lt');
+    const allowsGiro = (currentType === 'canto' || currentType === 'proj_horizontal' || currentType === 'proj_vertical');
+
+    // Validación y degradación segura del método activo si no está permitido
+    if (state.vmMethod === 'giro' && !allowsGiro) {
+      state.vmMethod = allowsAbat ? 'abatimiento' : 'none';
+    } else if (state.vmMethod === 'abatimiento' && !allowsAbat) {
+      state.vmMethod = 'none';
+    }
+
+    const m = state.vmMethod;
+
+    // Control estricto de visibilidad (clase 'hidden')
+    btnAbat.classList.toggle('hidden', !allowsAbat);
+    btnGiro.classList.toggle('hidden', !allowsGiro);
+
+    // Actualizar estilos activos/inactivos preservando estrictamente la clase 'hidden'
+    btnNone.className = `pill-btn px-2 py-0.5 rounded-lg text-[10px] font-bold ${m === 'none' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-blue-700'}`;
+
+    btnAbat.className = `pill-btn px-2 py-0.5 rounded-lg text-[10px] font-bold ${m === 'abatimiento' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-blue-700'}${allowsAbat ? '' : ' hidden'}`;
+
+    btnGiro.className = `pill-btn px-2 py-0.5 rounded-lg text-[10px] font-bold ${m === 'giro' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-blue-700'}${allowsGiro ? '' : ' hidden'}`;
+
+    // Fila de paso a paso: visible solo si el método activo es abatimiento o giro y está permitido
+    if (stepsRow) {
+      const showSteps = (m === 'abatimiento' && allowsAbat) || (m === 'giro' && allowsGiro);
+      stepsRow.classList.toggle('hidden', !showSteps);
+    }
+
+    updateStepPillLabels(state.vmMethod);
+  };
+  window.updateVMMethodButtons = updateVMMethodButtons;
+
+  const setVMMethod = (m) => {
+    stopVMAnimation();
+    state.vmMethod = m;
+    updateVMMethodButtons();
+    setVMStep(0);
+  };
+
+  const btnVMNone = document.getElementById('btnVMMethodNone');
+  if (btnVMNone) btnVMNone.addEventListener('click', () => setVMMethod('none'));
+  const btnVMAbat = document.getElementById('btnVMMethodAbat');
+  if (btnVMAbat) btnVMAbat.addEventListener('click', () => setVMMethod('abatimiento'));
+  const btnVMGiro = document.getElementById('btnVMMethodGiro');
+  if (btnVMGiro) btnVMGiro.addEventListener('click', () => setVMMethod('giro'));
+
+  // Step Pills
+  const setVMStep = (s) => {
+    stopVMAnimation();
+    state.vmStep = s;
+    state.vmAnimActiveStep = 0;
+    state.vmAnimProgress = 1.0;
+    [0, 1, 2, 3, 4, 5, 6].forEach(i => {
+      const el = document.getElementById(i === 0 ? 'btnVMStepAll' : `btnVMStep${i}`);
+      if (el) {
+        el.className = `pill-btn px-1.5 py-0.5 rounded-md text-[9px] ${state.vmStep === i ? 'font-bold bg-blue-600 text-white' : 'font-medium bg-slate-100 text-slate-600 hover:bg-blue-50'}`;
+      }
+    });
+    drawEpura2D();
+  };
+  const stepAll = document.getElementById('btnVMStepAll'); if (stepAll) stepAll.addEventListener('click', () => setVMStep(0));
+  const step1 = document.getElementById('btnVMStep1'); if (step1) step1.addEventListener('click', () => animateVMStep(1));
+  const step2 = document.getElementById('btnVMStep2'); if (step2) step2.addEventListener('click', () => animateVMStep(2));
+  const step3 = document.getElementById('btnVMStep3'); if (step3) step3.addEventListener('click', () => animateVMStep(3));
+  const step4 = document.getElementById('btnVMStep4'); if (step4) step4.addEventListener('click', () => animateVMStep(4));
+  const step5 = document.getElementById('btnVMStep5'); if (step5) step5.addEventListener('click', () => animateVMStep(5));
+  const step6 = document.getElementById('btnVMStep6'); if (step6) step6.addEventListener('click', () => animateVMStep(6));
+
+  const btnPlayAnim = document.getElementById('btnVMPlayAnim');
+  if (btnPlayAnim) {
+    btnPlayAnim.addEventListener('click', () => {
+      if (state.vmIsPlaying) {
+        stopVMAnimation();
+      } else {
+        playVMFullSequence();
+      }
+    });
+  }
+
+  // Layer switches
+  const setupToggle = (id, key, activeBg, activeText, activeBorder) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', () => {
+      state.vmVisibility[key] = !state.vmVisibility[key];
+      const on = state.vmVisibility[key];
+      el.className = `pill-btn px-1.5 py-0.5 rounded-md text-[9px] font-semibold ${on ? `${activeBg} ${activeText} ${activeBorder}` : 'bg-slate-100 text-slate-400 border border-slate-200 line-through'}`;
+      drawEpura2D();
+    });
+  };
+  setupToggle('toggleVMProjections', 'projections', 'bg-blue-100', 'text-blue-800', 'border-blue-300');
+  setupToggle('toggleVMTraces', 'traces', 'bg-blue-100', 'text-blue-800', 'border-blue-300');
+  setupToggle('toggleVMConstruction', 'construction', 'bg-amber-100', 'text-amber-800', 'border-amber-300');
+  setupToggle('toggleVMResult', 'resultVM', 'bg-emerald-100', 'text-emerald-800', 'border-emerald-300');
 
   // Expand Plane
   const btnExpPlane = document.getElementById('btnExpandPlane');
@@ -882,6 +1406,7 @@ window.onload = function() {
         if (p) { Object.assign(state.lineSolid.p1, p.p1); Object.assign(state.lineSolid.p2, p.p2); syncLineSolidSliders(); }
       }
       updateCoupledBadges();
+      if (typeof window.updateVMMethodButtons === 'function') window.updateVMMethodButtons();
       updateScene();
     });
   }
@@ -928,6 +1453,7 @@ window.onload = function() {
         syncLineSolidSliders();
       }
       updateCoupledBadges();
+      if (typeof window.updateVMMethodButtons === 'function') window.updateVMMethodButtons();
       updateScene();
     });
   }
@@ -935,19 +1461,51 @@ window.onload = function() {
   // Panels Collapse/Expand
   const cHead = document.getElementById('coordsHeader');
   if (cHead) {
-    cHead.addEventListener('click', () => {
-      document.getElementById('coordsContent').classList.toggle('hidden');
-      document.getElementById('iconToggleCoords').classList.toggle('fa-chevron-down');
-      document.getElementById('iconToggleCoords').classList.toggle('fa-chevron-up');
+    cHead.addEventListener('click', (e) => {
+      // Don't toggle if clicking a specific action button inside header
+      if (e.target.closest('#btnToggleCoordLock') || e.target.closest('#btnResetCoords')) return;
+      const cContent = document.getElementById('coordsContent');
+      if (cContent) {
+        cContent.classList.toggle('hidden');
+        const icon = document.getElementById('iconToggleCoords');
+        if (icon) {
+          const isHidden = cContent.classList.contains('hidden');
+          icon.classList.toggle('fa-chevron-down', isHidden);
+          icon.classList.toggle('fa-chevron-up', !isHidden);
+        }
+      }
     });
   }
   const lHead = document.getElementById('legendHeader');
   if (lHead) {
     lHead.addEventListener('click', () => {
-      document.getElementById('legendContent').classList.toggle('hidden');
-      document.getElementById('iconToggleLegend').classList.toggle('fa-chevron-up');
-      document.getElementById('iconToggleLegend').classList.toggle('fa-chevron-down');
+      const lContent = document.getElementById('legendContent');
+      if (lContent) {
+        lContent.classList.toggle('hidden');
+        const icon = document.getElementById('iconToggleLegend');
+        if (icon) {
+          const isHidden = lContent.classList.contains('hidden');
+          icon.classList.toggle('fa-chevron-down', isHidden);
+          icon.classList.toggle('fa-chevron-up', !isHidden);
+        }
+      }
     });
+  }
+
+  // Mobile initial state: collapse Legend and Coords by default so 3D scene is clean and visible
+  if (window.innerWidth < 768) {
+    const lCont = document.getElementById('legendContent');
+    const lIcon = document.getElementById('iconToggleLegend');
+    if (lCont && !lCont.classList.contains('hidden')) {
+      lCont.classList.add('hidden');
+      if (lIcon) { lIcon.classList.remove('fa-chevron-up'); lIcon.classList.add('fa-chevron-down'); }
+    }
+    const cCont = document.getElementById('coordsContent');
+    const cIcon = document.getElementById('iconToggleCoords');
+    if (cCont && !cCont.classList.contains('hidden')) {
+      cCont.classList.add('hidden');
+      if (cIcon) { cIcon.classList.remove('fa-chevron-up'); cIcon.classList.add('fa-chevron-down'); }
+    }
   }
 
   // Custom Figures Modal System

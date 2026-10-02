@@ -5,16 +5,30 @@
 const state = {
   mode: 'lines', // 'lines', 'planes', 'intersections', 'line_solid'
   lineType: 'oblique',
-  planeType: 'canto',
+  planeType: 'oblique',
   planeExpanded: true,
   planeLabelsMode: 'plane',
   epuraExpanded: false,
+  epuraFullscreen: false,
+  epuraPan: { x: 0, y: 0 },
+  epuraZoom: 1.0,
+  vmMethod: 'none', // 'none', 'abatimiento', 'giro'
+  vmStep: 0, // 0 = Todos, 1 = Charnela/Eje, 2 = Auxiliares, 3 = Arcos, 4 = V.M.
+  vmAnimProgress: 1.0,
+  vmAnimActiveStep: 0,
+  vmIsPlaying: false,
+  vmVisibility: {
+    projections: true,
+    traces: true,
+    construction: true,
+    resultVM: true
+  },
   lockCoupledSliders: false,
   validationError: null,
 
   intersection: {
     solidType: 'prism_regular',
-    cuttingPlaneType: 'canto',
+    cuttingPlaneType: 'oblique',
     cutHeight: 5.0,
     cutDist: 5.5,
     cutX: 0.0,
@@ -28,7 +42,7 @@ const state = {
     labelsMode: 'plane'
   },
   lineSolid: {
-    solidType: 'prism_regular',
+    solidType: 'cylinder',
     solidHeight: 8.0,
     lineType: 'oblique',
     names: { p1: 'P1', p2: 'P2' },
@@ -43,7 +57,7 @@ const state = {
   figureModalManualApex: false,
   pointNames: { p1: 'A', p2: 'B', p3: 'C' },
   line: { p1: { x: -5.0, y: 7.5, z: 3.0 }, p2: { x: 5.0, y: 2.5, z: 8.5 } },
-  plane: { p1: { x: -3.0, y: 7.0, z: 2.0 }, p2: { x: 2.0, y: 8.0, z: 4.0 }, p3: { x: 1.0, y: 2.0, z: 8.0 } },
+  plane: { p1: { x: -4.0, y: 7.0, z: 2.5 }, p2: { x: 3.0, y: 8.5, z: 4.0 }, p3: { x: 1.0, y: 2.0, z: 8.5 } },
   widthLT: 18,
   heightPV: 12,
   depthPH: 12

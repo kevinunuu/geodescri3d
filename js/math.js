@@ -411,6 +411,7 @@ function computeSolidIntersection(solid, eq) {
   }
 
   const results = [];
+  let isOrderedBoundary = false;
   if (solid.type.startsWith('prism')) {
     const bottom = solid.bottom || solid.basePts.map(p => ({ x: p.x, y: 0, z: p.z }));
     const top = solid.top || solid.basePts.map(p => ({ x: p.x + (solid.slant ? solid.slant.x : 0), y: solid.H, z: p.z + (solid.slant ? solid.slant.z : 0) }));
@@ -481,6 +482,7 @@ function computeSolidIntersection(solid, eq) {
       if (ptTop) results.push({ pt: ptTop, name3D: '', namePV: '', namePH: '', type: 'base' });
     }
   } else if (solid.type === 'cone') {
+    isOrderedBoundary = true;
     const c = solid.c, R = solid.R, H = solid.H;
     const apex = { x: c.x, y: H, z: c.z };
     const dApex = evalPt(apex);
@@ -643,9 +645,11 @@ function computeSolidIntersection(solid, eq) {
           });
         }
       }
+      let cutsCylinderBase = false;
       if (L > 1e-7) {
         const d0 = (A * c.x + C * c.z + D) / L;
         if (Math.abs(d0) <= R * 0.999999) {
+          cutsCylinderBase = true;
           const h0 = Math.sqrt(Math.max(0, R * R - d0 * d0));
           const nx = A / L, nz = C / L;
           const px = c.x - d0 * nx, pz = c.z - d0 * nz;
@@ -660,6 +664,7 @@ function computeSolidIntersection(solid, eq) {
         }
         const dH = (A * c.x + B * H + C * c.z + D) / L;
         if (Math.abs(dH) <= R * 0.999999) {
+          cutsCylinderBase = true;
           const hH = Math.sqrt(Math.max(0, R * R - dH * dH));
           const nx = A / L, nz = C / L;
           const px = c.x - dH * nx, pz = c.z - dH * nz;
@@ -673,6 +678,7 @@ function computeSolidIntersection(solid, eq) {
           }
         }
       }
+      if (!cutsCylinderBase) isOrderedBoundary = true;
     }
   }
 
@@ -685,14 +691,16 @@ function computeSolidIntersection(solid, eq) {
   unique.forEach(u => center.add(u.pt));
   center.divideScalar(unique.length);
 
-  const normal = new THREE.Vector3(A, B, C).normalize();
-  let u = new THREE.Vector3().subVectors(unique[0].pt, center).normalize();
-  if (u.lengthSq() < 1e-4) u = new THREE.Vector3().crossVectors(normal, new THREE.Vector3(0, 1, 0)).normalize();
-  if (u.lengthSq() < 1e-4) u = new THREE.Vector3().crossVectors(normal, new THREE.Vector3(0, 0, 1)).normalize();
-  const v = new THREE.Vector3().crossVectors(normal, u).normalize();
+  if (!isOrderedBoundary) {
+    const normal = new THREE.Vector3(A, B, C).normalize();
+    let u = new THREE.Vector3().subVectors(unique[0].pt, center).normalize();
+    if (u.lengthSq() < 1e-4) u = new THREE.Vector3().crossVectors(normal, new THREE.Vector3(0, 1, 0)).normalize();
+    if (u.lengthSq() < 1e-4) u = new THREE.Vector3().crossVectors(normal, new THREE.Vector3(0, 0, 1)).normalize();
+    const v = new THREE.Vector3().crossVectors(normal, u).normalize();
 
-  unique.sort((a, b) => Math.atan2(new THREE.Vector3().subVectors(a.pt, center).dot(v), new THREE.Vector3().subVectors(a.pt, center).dot(u)) -
-                       Math.atan2(new THREE.Vector3().subVectors(b.pt, center).dot(v), new THREE.Vector3().subVectors(b.pt, center).dot(u)));
+    unique.sort((a, b) => Math.atan2(new THREE.Vector3().subVectors(a.pt, center).dot(v), new THREE.Vector3().subVectors(a.pt, center).dot(u)) -
+                         Math.atan2(new THREE.Vector3().subVectors(b.pt, center).dot(v), new THREE.Vector3().subVectors(b.pt, center).dot(u)));
+  }
   return { items: unique, center };
 }
 
@@ -801,5 +809,246 @@ function validateCurrentGeometry() {
     }
   }
   return null;
+}
+
+// --- Resolución Analítica de Verdadera Magnitud (V.M.) ---
+
+// 1. Abatimiento (Rebatimiento) sobre el Plano Horizontal (PH) alrededor de la traza α₁ (charnela)
+function computePlaneAbatimiento(eq, points) {
+  if (!points || points.length < 3) return null;
+  const { A, B, C, D } = eq;
+  const normXZ = Math.hypot(A, C);
+
+  let uPerpX, uPerpZ;
+  if (normXZ > 1e-5) {
+    uPerpX = A / normXZ;
+    uPerpZ = C / normXZ;
+    if (uPerpZ < 0) {
+      uPerpX = -uPerpX;
+      uPerpZ = -uPerpZ;
+    }
+  } else {
+    uPerpX = 0;
+    uPerpZ = 1;
+  }
+
+  const uParX = -uPerpZ;
+  const uParZ = uPerpX;
+
+  const items = points.map((p, idx) => {
+    const x0 = p.x, y0 = p.y, z0 = p.z;
+    const isKey = (p.isKey !== undefined) ? p.isKey : (p.label !== undefined ? Boolean(p.label) : (points.length <= 8));
+    let label = '';
+    if (state.mode === 'planes') {
+      label = p.label || (idx === 0 ? state.pointNames.p1 : idx === 1 ? state.pointNames.p2 : state.pointNames.p3);
+    } else {
+      label = (p.label !== undefined) ? p.label : (isKey ? `S${idx + 1}` : '');
+    }
+
+    let xf, zf, d, R, xAbat, zAbat, cotaPoint;
+
+    if (normXZ > 1e-5) {
+      const evalVal = A * x0 + C * z0 + D;
+      d = Math.abs(evalVal) / normXZ;
+      xf = x0 - (A * evalVal) / (normXZ * normXZ);
+      zf = z0 - (C * evalVal) / (normXZ * normXZ);
+      R = Math.sqrt(d * d + y0 * y0);
+      xAbat = xf + R * uPerpX;
+      zAbat = zf + R * uPerpZ;
+      cotaPoint = {
+        x: x0 + y0 * uParX,
+        z: z0 + y0 * uParZ
+      };
+    } else {
+      d = 0;
+      xf = x0;
+      zf = z0;
+      R = y0;
+      xAbat = x0;
+      zAbat = z0;
+      cotaPoint = { x: x0, z: z0 };
+    }
+
+    return {
+      isKey,
+      label,
+      labelAbat: label ? `(${label})` : '',
+      ptOriginal: { x: x0, y: y0, z: z0 },
+      cota: y0,
+      distToCharnela: d,
+      foot: { x: xf, z: zf },
+      radius: R,
+      cotaPoint,
+      ptAbat: { x: xAbat, z: zAbat }
+    };
+  });
+
+  let perimeter = 0;
+  const edges = [];
+  for (let i = 0; i < items.length; i++) {
+    const nextIdx = (i + 1) % items.length;
+    const pA = items[i].ptOriginal, pB = items[nextIdx].ptOriginal;
+    const len = Math.hypot(pB.x - pA.x, pB.y - pA.y, pB.z - pA.z);
+    edges.push({
+      from: items[i].labelAbat,
+      to: items[nextIdx].labelAbat,
+      length: len
+    });
+    perimeter += len;
+  }
+
+  let areaVec = new THREE.Vector3(0, 0, 0);
+  for (let i = 0; i < points.length; i++) {
+    const p1 = new THREE.Vector3(points[i].x, points[i].y, points[i].z);
+    const p2 = new THREE.Vector3(points[(i + 1) % points.length].x, points[(i + 1) % points.length].y, points[(i + 1) % points.length].z);
+    areaVec.add(new THREE.Vector3().crossVectors(p1, p2));
+  }
+  const area = 0.5 * areaVec.length();
+
+  return {
+    method: 'abatimiento',
+    charnela: { type: 'PH', name: 'α₁', A, C, D },
+    items,
+    edges,
+    perimeter,
+    area
+  };
+}
+
+// 2. Giro (Rotación) alrededor de un Eje en la Línea de Tierra (L.T.)
+// Plano de Canto: Eje de punta en LT (E ⊥ PV), rota en PV a LT, viaja en PH (Z=cte), resuelve abajo en PH.
+// Plano Vertical: Eje vertical en LT (E ⊥ PH), rota en PH a LT, viaja en PV (Y=cte), resuelve arriba en PV.
+function computePlaneGiro(eq, points) {
+  if (!points || points.length < 3) return null;
+  const { A, B, C, D } = eq;
+
+  // Determinar si es Plano de Canto (proyectante vertical) o Plano Vertical (proyectante horizontal)
+  const isVertical = (
+    (state.mode === 'planes' && state.planeType === 'proj_horizontal') ||
+    (state.mode === 'intersections' && state.intersection.cuttingPlaneType === 'proj_horizontal') ||
+    (Math.abs(B) < 1e-4 && Math.abs(C) > 1e-4)
+  );
+  const isCanto = (
+    (state.mode === 'planes' && (state.planeType === 'canto' || state.planeType === 'proj_vertical')) ||
+    (state.mode === 'intersections' && state.intersection.cuttingPlaneType === 'canto') ||
+    (!isVertical && Math.abs(C) < 1e-4 && Math.abs(B) > 1e-4)
+  );
+
+  // Criterio: Solo Plano de Canto y Plano Vertical admiten resolución por Giro simple
+  if (!isVertical && !isCanto) return null;
+
+  // Punto de apoyo en la Línea de Tierra (LT): Vα = (-D/A, 0, 0)
+  let x0 = 0;
+  if (Math.abs(A) > 1e-5) {
+    x0 = -D / A;
+  } else {
+    x0 = points[0].x;
+  }
+  const axis = { x: x0, y: 0, z: 0 };
+  const targetPlane = isVertical ? 'PV' : 'PH';
+
+  // Sentido de giro a lo largo de LT (mantener la figura en su lado natural respecto al vértice Vα)
+  const sumDeltaX = points.reduce((acc, p) => acc + (p.x - x0), 0);
+  const signDir = (sumDeltaX >= 0) ? 1 : -1;
+
+  const items = points.map((p, idx) => {
+    const isKey = (p.isKey !== undefined) ? p.isKey : (p.label !== undefined ? Boolean(p.label) : (points.length <= 8));
+    let label = '';
+    if (state.mode === 'planes') {
+      label = p.label || (idx === 0 ? state.pointNames.p1 : idx === 1 ? state.pointNames.p2 : state.pointNames.p3);
+    } else {
+      label = (p.label !== undefined) ? p.label : (isKey ? `S${idx + 1}` : '');
+    }
+
+    const dx = p.x - x0;
+    const deltaX = Math.abs(dx);
+
+    let R, deltaAux, xGir, yGir, zGir;
+
+    if (isVertical) {
+      // Plano Vertical: Eje vertical E ⊥ PH apoyado en LT (x0, 0, 0).
+      // Centro en PH: E1(x0, 0) sobre la LT.
+      // Radio de giro en PH: R = √(Δx² + z²)
+      const dz = p.z;
+      deltaAux = Math.abs(dz);
+      R = Math.hypot(dx, dz);
+
+      // Rotación en PH alrededor de E1 hasta la Línea de Tierra (z=0)
+      xGir = x0 + signDir * R;
+      zGir = 0;
+
+      // En PV: Como el eje es vertical (⊥ PH), la rotación ocurre en un plano ∥ al PH.
+      // Cota Y estrictamente constante (y' = y)
+      yGir = p.y;
+    } else {
+      // Plano de Canto: Eje de punta E ⊥ PV apoyado en LT (x0, 0, 0).
+      // Centro en PV: E2(x0, 0) sobre la LT.
+      // Radio de giro en PV: R = √(Δx² + y²)
+      const dy = p.y;
+      deltaAux = Math.abs(dy);
+      R = Math.hypot(dx, dy);
+
+      // Rotación en PV alrededor de E2 hasta la Línea de Tierra (y=0)
+      xGir = x0 + signDir * R;
+      yGir = 0;
+
+      // En PH: Como el eje es de punta (⊥ PV), la rotación ocurre en un plano ∥ al PV.
+      // Alejamiento Z estrictamente constante (z' = z)
+      zGir = p.z;
+    }
+
+    return {
+      isKey,
+      label,
+      labelGir: label ? `${label}'` : '',
+      ptOriginal: { x: p.x, y: p.y, z: p.z },
+      deltaX,
+      deltaAux,
+      deltaY: isVertical ? 0 : deltaAux,
+      deltaZ: isVertical ? deltaAux : 0,
+      rPV: R,
+      rGiro: R,
+      xGir,
+      yGir,
+      zGir,
+      ptGirPV: { x: xGir, y: isVertical ? p.y : 0 },
+      ptGirPH: { x: xGir, z: isVertical ? 0 : p.z }
+    };
+  });
+
+  let perimeter = 0;
+  const edges = [];
+  for (let i = 0; i < items.length; i++) {
+    const nextIdx = (i + 1) % items.length;
+    const pA = items[i].ptOriginal, pB = items[nextIdx].ptOriginal;
+    const len = Math.hypot(pB.x - pA.x, pB.y - pA.y, pB.z - pA.z);
+    edges.push({
+      from: items[i].labelGir,
+      to: items[nextIdx].labelGir,
+      length: len
+    });
+    perimeter += len;
+  }
+
+  let areaVec = new THREE.Vector3(0, 0, 0);
+  for (let i = 0; i < points.length; i++) {
+    const p1 = new THREE.Vector3(points[i].x, points[i].y, points[i].z);
+    const p2 = new THREE.Vector3(points[(i + 1) % points.length].x, points[(i + 1) % points.length].y, points[(i + 1) % points.length].z);
+    areaVec.add(new THREE.Vector3().crossVectors(p1, p2));
+  }
+  const area = 0.5 * areaVec.length();
+
+  return {
+    method: 'giro',
+    targetPlane,
+    isVertical,
+    isCanto,
+    axis,
+    signDir,
+    items,
+    edges,
+    perimeter,
+    area
+  };
 }
 

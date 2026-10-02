@@ -508,19 +508,21 @@ function renderIntersectionSection() {
     secGrp.add(secMesh);
     secGrp.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x60a5fa, linewidth: 3 })));
 
+    const isCurved = (solid.type === 'cylinder' || solid.type === 'cone');
     const lMode = cfg.labelsMode || (cfg.showSectionLabels ? 'plane' : 'off');
     if (lMode !== 'off') {
       items.forEach((it, idx) => {
         const ptPV = new THREE.Vector3(it.pt.x, it.pt.y, 0.02);
         const ptPH = new THREE.Vector3(it.pt.x, 0.02, it.pt.z);
-        
-        if (lMode === 'all') {
+        const isKeyPoint = it.isKey !== undefined ? it.isKey : Boolean(it.name3D || items.length <= 8);
+
+        // Rayos técnicos diédricos (en curvas SOLO para puntos clave notables, evitando marañas densas)
+        if (lMode === 'all' && isKeyPoint) {
           createTechnicalRay(it.pt, ptPV, 0x94a3b8, secGrp);
           createTechnicalRay(it.pt, ptPH, 0x94a3b8, secGrp);
         }
 
-        const hasName = Boolean(it.name3D);
-        if (hasName || items.length <= 8 || idx % Math.max(1, Math.floor(items.length / 6)) === 0) {
+        if (isKeyPoint) {
           const name3D = it.name3D || `S${idx + 1}`;
           const namePV = it.namePV || `${name3D}2`;
           const namePH = it.namePH || `${name3D}1`;

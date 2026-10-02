@@ -3,13 +3,19 @@
   font-family: 'Century Gothic', CenturyGothic, AppleGothic, sans-serif;
 }
 .font-mono { font-family: 'JetBrains Mono', monospace; }
-body {
+html, body {
+  height: 100%;
+  height: 100dvh;
+  width: 100%;
+  width: 100vw;
   background-color: #f0f6fb;
   color: #0f172a;
   margin: 0;
   padding: 0;
   overflow: hidden;
   user-select: none;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
 }
 .minimal-dot-grid {
   background-image: radial-gradient(rgba(2, 132, 199, 0.12) 1px, transparent 1px);
@@ -110,3 +116,103 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.15); box-sha
 
 .custom-scroll::-webkit-scrollbar { width: 4px; }
 .custom-scroll::-webkit-scrollbar-thumb { background: rgba(2, 132, 199, 0.25); border-radius: 4px; }
+
+/* Epura 2D Pantalla Casi Completa y Controles de Verdadera Magnitud */
+.epura-fullscreen {
+  position: fixed !important;
+  top: 1rem !important;
+  left: 1rem !important;
+  right: 1rem !important;
+  bottom: 1rem !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  transform: none !important;
+  z-index: 50 !important;
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 56, 168, 0.25), 0 0 0 1px rgba(2, 132, 199, 0.2) !important;
+}
+
+@media (min-width: 768px) {
+  .epura-fullscreen {
+    top: 1.5rem !important;
+    left: 1.5rem !important;
+    right: 1.5rem !important;
+    bottom: 1.5rem !important;
+    transform: none !important;
+  }
+}
+
+.canvas-interactive {
+  cursor: grab;
+  touch-action: none;
+}
+.canvas-interactive:active {
+  cursor: grabbing;
+}
+
+.pill-btn {
+  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pill-btn:hover {
+  transform: translateY(-1px);
+}
+.pill-btn:active {
+  transform: scale(0.96);
+}
+
+/* 3D Viewport Canvases Touch Control (evita scroll o gestos no deseados del navegador en móviles) */
+#canvas3dContainer canvas,
+#figPreviewContainer canvas {
+  touch-action: none !important;
+  display: block;
+}
+
+/* Ocultar barra de scroll horizontal en contenedores de pestañas */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Ergonomía táctil para móviles y pantallas táctiles */
+@media (pointer: coarse) {
+  input[type=range] {
+    height: 6px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+    box-shadow: 0 1px 5px rgba(0, 56, 168, 0.4);
+  }
+  .btn-interactive, .mode-btn, .view-btn, .pill-btn {
+    min-height: 28px;
+    touch-action: manipulation;
+  }
+}
+
+/* Ajustes de ventana y modales en pantallas móviles */
+@media (max-width: 639px) {
+  .epura-fullscreen {
+    top: 0.5rem !important;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    bottom: 0.5rem !important;
+    border-radius: 1rem !important;
+    padding: 0.6rem !important;
+  }
+}
+
+/* Soporte para áreas seguras de notch y barra inferior en iOS */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  #coordsPanel {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
