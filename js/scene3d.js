@@ -571,9 +571,9 @@ function renderLineSolidSection() {
 
   const dir = new THREE.Vector3().subVectors(v2, v1);
   const maxDist = dir.length();
-  dir.normalize();
-  const rc = new THREE.Raycaster(v1, dir, 0, maxDist);
-  const hits = rc.intersectObject(sMesh, false);
+  const hits = maxDist > 1e-8
+    ? new THREE.Raycaster(v1, dir.normalize(), 0, maxDist).intersectObject(sMesh, false)
+    : [];
 
   let piercePts = [];
   if (hits.length >= 2) {

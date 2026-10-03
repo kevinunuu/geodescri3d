@@ -5,6 +5,99 @@
  * Verdadera Magnitud (V.M.) paso a paso mediante Abatimiento (Rebatimiento) y Giro.
  */
 
+/**
+ * Geometría pura, sin Canvas/THREE/state. Devuelve
+ * [{ points: [{x,y,z}], closed: boolean, projections: ['PV','PH','PP'], kind }].
+ * kind: outline/circle/axis/apex. Los polígonos usan sus vértices reales;
+ * las superficies curvas sólo incluyen círculos y siluetas, no una malla.
+ */
+function getSolidProjectionPaths(solid) {
+  const paths = [];
+  if (!solid) return paths;
+  const all = ['PV', 'PH', 'PP'];
+  function add(points, closed = false, projections = all, kind = 'outline') {
+    if (!points || !points.length) return;
+    paths.push({ points: points.map(p => ({ x: p.x, y: p.y, z: p.z })), closed, projections: projections.slice(), kind });
+  }
+  const bottom = solid.bottom || solid.basePts;
+  if (solid.type === 'prism' || solid.type === 'pyramid') {
+    add(bottom, true);
+    if (solid.type === 'prism') {
+      add(solid.top, true);
+      (bottom || []).forEach((p, i) => {
+        if (solid.top && solid.top[i]) add([p, solid.top[i]]);
+      });
+    } else if (solid.apex) {
+      (bottom || []).forEach(p => add([p, solid.apex]));
+    }
+    return paths;
+  }
+  if ((solid.type !== 'cylinder' && solid.type !== 'cone') || !solid.c) return paths;
+  const c = solid.c, R = Math.abs(solid.R);
+  if (!Number.isFinite(R)) return paths;
+  const isPV = solid.basePlane === 'PV';
+  const radial = isPV ? 'y' : 'z';
+  const baseProjection = isPV ? 'PV' : 'PH';
+  const sideProjection = isPV ? 'PH' : 'PV';
+  const end = solid.type === 'cone' ? solid.apex : solid.topC;
+  const tip = end || { x: c.x, y: c.y + (isPV ? 0 : solid.H), z: c.z + (isPV ? solid.H : 0) };
+  function offset(center, coord, amount) {
+    return { ...center, [coord]: center[coord] + amount };
+  }
+  function circle(center) {
+    const points = [];
+    for (let i = 0; i < 64; i++) {
+      const a = i * Math.PI * 2 / 64;
+      points.push({ ...center, x: center.x + R * Math.cos(a), [radial]: center[radial] + R * Math.sin(a) });
+    }
+    add(points, true, [baseProjection], 'circle');
+  }
+  circle(c);
+  // Extremos reales del diámetro aparente en cada plano perpendicular.
+  [[sideProjection, 'x'], ['PP', radial]].forEach(([projection, coord]) => {
+    const left = offset(c, coord, -R), right = offset(c, coord, R);
+    add(solid.type === 'cone'
+      ? [left, tip, right]
+      : [left, offset(tip, coord, -R), offset(tip, coord, R), right], true, [projection]);
+    add([c, tip], false, [projection], 'axis');
+  });
+  ['x', radial].forEach(coord => add([offset(c, coord, -R - 0.6), offset(c, coord, R + 0.6)], false, [baseProjection], 'axis'));
+  if (solid.type === 'cone') add([tip], false, all, 'apex');
+  return paths;
+}
+
+// Compartido por intersección plano/sólido y recta/sólido.
+function drawSolidProjectionPaths(ctx, paths, { sc, oX, oY, oX_pp = 0, has3rdProj = false, opacity = 0.45 }) {
+  const colors = { PV: [0, 56, 168], PH: [2, 132, 199], PP: [124, 58, 237] };
+  ctx.save();
+  ['PV', 'PH', ...(has3rdProj ? ['PP'] : [])].forEach(projection => {
+    const color = colors[projection];
+    function project(p) {
+      return { x: (projection === 'PP' ? oX_pp + p.z * sc : oX + p.x * sc), y: oY + (projection === 'PH' ? p.z : -p.y) * sc };
+    }
+    paths.filter(path => path.projections.includes(projection)).forEach(path => {
+      const points = path.points.map(project);
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(${color.join(',')}, ${path.kind === 'axis' ? opacity - 0.15 : opacity})`;
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash(path.kind === 'axis' ? [3, 3] : []);
+      if (path.kind === 'apex') {
+        ctx.fillStyle = `rgb(${color.join(',')})`;
+        ctx.arc(points[0].x, points[0].y, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = "bold 9px 'JetBrains Mono'";
+        ctx.fillText(`V${projection === 'PV' ? 2 : projection === 'PH' ? 1 : 3}`, points[0].x + 5, points[0].y + (projection === 'PH' ? 11 : -4));
+      } else {
+        ctx.moveTo(points[0].x, points[0].y);
+        points.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        if (path.closed) ctx.closePath();
+        ctx.stroke();
+      }
+    });
+  });
+  ctx.restore();
+}
+
 function drawEpura2D() {
   if (!epuraCanvas || !epuraCtx) return;
 
@@ -60,25 +153,54 @@ function drawEpura2D() {
 
   // Base escala y orígenes
   const baseScale = (state.epuraFullscreen ? 21 : (state.epuraExpanded ? 18 : 11));
-  const sc = baseScale;
-  const oX = has3rdProj ? Math.round(w * 0.33) : w / 2;
-  const oY = h / 2;
-  const oX_pp = has3rdProj ? Math.round(w * 0.72) : 0;
+  let sc = baseScale;
+  let oX = has3rdProj ? Math.round(w * 0.33) : w / 2;
+  let oY = h / 2;
+  let oX_pp = has3rdProj ? Math.round(w * 0.72) : 0;
+  // Separar el centro de la vista del origen geométrico permite encuadrar
+  // figuras desplazadas sin perder X compartida, pan/zoom ni coordenadas LT.
+  const viewCenterX = oX, viewCenterY = oY;
+  const solidMode = state.mode === 'intersections' || state.mode === 'line_solid';
+  const solidConfig = state.mode === 'line_solid' ? state.lineSolid : state.intersection;
+  const activeSolid = solidMode ? getSolidGeometryDefinition(state.mode === 'line_solid' ? 'line_solid' : 'intersection') : null;
+  const solidPaths = getSolidProjectionPaths(activeSolid);
+  const sectionData = state.mode === 'intersections' ? computeSolidIntersection(activeSolid, getActivePlaneEquation()) : null;
+  if (solidMode && state.vmMethod === 'none' && typeof solidConfig.solidType === 'string' && solidConfig.solidType.startsWith('custom_')) {
+    const points = solidPaths.flatMap(path => path.points);
+    if (state.mode === 'line_solid') points.push(solidConfig.p1, solidConfig.p2, ...(solidConfig.lastPiercePts || []));
+    else if (sectionData && sectionData.items) points.push(...sectionData.items.map(item => item.pt));
+    const validPoints = points.filter(p => p && [p.x, p.y, p.z].every(Number.isFinite));
+    if (validPoints.length) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      validPoints.forEach(p => {
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, -p.y, p.z); maxY = Math.max(maxY, -p.y, p.z);
+        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+      });
+      const gap = has3rdProj ? 24 : 0;
+      const spanX = maxX - minX + (has3rdProj ? maxZ - minZ : 0);
+      sc = Math.min(baseScale, (w - 48 - gap) / Math.max(spanX, 1), (h - 48) / Math.max(maxY - minY, 1));
+      const width = spanX * sc + gap;
+      oX = viewCenterX - width / 2 - minX * sc;
+      oY = viewCenterY - (minY + maxY) * sc / 2;
+      if (has3rdProj) oX_pp = oX + maxX * sc + gap - minZ * sc;
+    }
+  }
 
   // Aplicar transformación Pan & Zoom
   ctx.save();
   ctx.translate(w / 2 + (state.epuraPan ? state.epuraPan.x : 0), h / 2 + (state.epuraPan ? state.epuraPan.y : 0));
   const currentZoom = state.epuraZoom || 1.0;
   ctx.scale(currentZoom, currentZoom);
-  ctx.translate(-oX, -oY);
+  ctx.translate(-viewCenterX, -viewCenterY);
 
   window.epuraHoverTargets = [];
   function addHoverTarget(drawX, drawY, hitR, title, lines) {
     const panX = state.epuraPan ? state.epuraPan.x : 0;
     const panY = state.epuraPan ? state.epuraPan.y : 0;
     const z = currentZoom;
-    const sx = (w / 2 + panX) + (drawX - oX) * z;
-    const sy = (h / 2 + panY) + (drawY - oY) * z;
+    const sx = (w / 2 + panX) + (drawX - viewCenterX) * z;
+    const sy = (h / 2 + panY) + (drawY - viewCenterY) * z;
     window.epuraHoverTargets.push({
       x: sx,
       y: sy,
@@ -113,8 +235,8 @@ function drawEpura2D() {
   function projectPointToProfile(pt, label, col = "#7c3aed", isDrawPoint = true) {
     const p2X = oX + pt.x * sc, p2Y = oY - pt.y * sc;
     const p1X = oX + pt.x * sc, p1Y = oY + pt.z * sc;
-    const rZ = Math.max(0, pt.z * sc);
-    const p3X = oX_pp + rZ, p3Y = oY - pt.y * sc;
+    const signedZ = pt.z * sc, rZ = Math.abs(signedZ);
+    const p3X = oX_pp + signedZ, p3Y = oY - pt.y * sc;
 
     ctx.beginPath();
     ctx.setLineDash([2, 2]);
@@ -123,7 +245,7 @@ function drawEpura2D() {
 
     if (rZ > 1.5) {
       ctx.beginPath();
-      ctx.arc(oX_pp, oY, rZ, Math.PI / 2, 0, true);
+      ctx.arc(oX_pp, oY, rZ, signedZ < 0 ? -Math.PI / 2 : Math.PI / 2, signedZ < 0 ? -Math.PI : 0, true);
       ctx.stroke();
     }
 
@@ -227,10 +349,10 @@ function drawEpura2D() {
       names = [state.pointNames.p1, state.pointNames.p2, state.pointNames.p3];
       eq = computePlaneEquation(p[0], p[1], p[2]);
     } else {
-      solid = getSolidGeometryDefinition('intersection');
+      solid = activeSolid;
       isCurved = (solid.type === 'cylinder' || solid.type === 'cone');
       eq = getActivePlaneEquation();
-      const sData = computeSolidIntersection(solid, eq);
+      const sData = sectionData;
       if (sData && sData.items && sData.items.length >= 3) {
         p = sData.items.map(it => it.pt);
         // Preservar solo los nombres de los puntos clave (evitar saturación en curvas)
@@ -324,104 +446,8 @@ function drawEpura2D() {
     }
 
     // Contorno aparente del sólido en 2D diédrico (Contexto visual)
-    if (state.mode === 'intersections' && solid && showProjections) {
-      const c = solid.c;
-      const R = solid.R;
-      const H = solid.H;
-      const y0 = solid.c.y || 0;
-
-      if (solid.type === 'cylinder') {
-        // PH: Círculo de la base y cruz de ejes
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.45)";
-        ctx.lineWidth = 1.6;
-        ctx.arc(oX + c.x * sc, oY + c.z * sc, R * sc, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.25)";
-        ctx.setLineDash([3, 3]);
-        ctx.moveTo(oX + (c.x - R - 0.6) * sc, oY + c.z * sc);
-        ctx.lineTo(oX + (c.x + R + 0.6) * sc, oY + c.z * sc);
-        ctx.moveTo(oX + c.x * sc, oY + (c.z - R - 0.6) * sc);
-        ctx.lineTo(oX + c.x * sc, oY + (c.z + R + 0.6) * sc);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // PV: Rectángulo de contorno aparente
-        const leftX = oX + (c.x - R) * sc;
-        const topY = oY - (y0 + H) * sc;
-        const botY = oY - y0 * sc;
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.45)";
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(leftX, topY, (2 * R) * sc, H * sc);
-
-        // Eje de simetría en PV (trazo y punto)
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.35)";
-        ctx.setLineDash([7, 2, 2, 2]);
-        ctx.moveTo(oX + c.x * sc, botY + 6);
-        ctx.lineTo(oX + c.x * sc, topY - 6);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      } else if (solid.type === 'cone') {
-        // PH: Círculo de la base y vértice V1
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.45)";
-        ctx.lineWidth = 1.6;
-        ctx.arc(oX + c.x * sc, oY + c.z * sc, R * sc, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.25)";
-        ctx.setLineDash([3, 3]);
-        ctx.moveTo(oX + (c.x - R - 0.6) * sc, oY + c.z * sc);
-        ctx.lineTo(oX + (c.x + R + 0.6) * sc, oY + c.z * sc);
-        ctx.moveTo(oX + c.x * sc, oY + (c.z - R - 0.6) * sc);
-        ctx.lineTo(oX + c.x * sc, oY + (c.z + R + 0.6) * sc);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = "#0284c7";
-        ctx.beginPath();
-        ctx.arc(oX + c.x * sc, oY + c.z * sc, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.font = "bold 9px 'JetBrains Mono'";
-        ctx.fillText("V1", oX + c.x * sc + 4, oY + c.z * sc + 11);
-
-        // PV: Triángulo de contorno aparente y vértice V2
-        const leftX = oX + (c.x - R) * sc;
-        const rightX = oX + (c.x + R) * sc;
-        const apexX = oX + (solid.apex ? solid.apex.x : c.x) * sc;
-        const apexY = oY - (solid.apex ? solid.apex.y : (y0 + H)) * sc;
-        const botY = oY - y0 * sc;
-
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.45)";
-        ctx.lineWidth = 1.6;
-        ctx.moveTo(leftX, botY);
-        ctx.lineTo(apexX, apexY);
-        ctx.lineTo(rightX, botY);
-        ctx.closePath();
-        ctx.stroke();
-
-        ctx.fillStyle = "#0038a8";
-        ctx.beginPath();
-        ctx.arc(apexX, apexY, 2.8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.font = "bold 9px 'JetBrains Mono'";
-        ctx.fillText("V2", apexX + 5, apexY - 4);
-
-        // Eje de simetría en PV (trazo y punto)
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.35)";
-        ctx.setLineDash([7, 2, 2, 2]);
-        ctx.moveTo(apexX, botY + 6);
-        ctx.lineTo(apexX, apexY - 6);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    if (state.mode === 'intersections' && solid && showProjections && state.intersection.showSolid !== false) {
+      drawSolidProjectionPaths(ctx, solidPaths, { sc, oX, oY, oX_pp, has3rdProj });
     }
 
     // A. Proyecciones diédricas básicas de la sección (PV y PH)
@@ -1320,40 +1346,12 @@ function drawEpura2D() {
     const p1 = state.lineSolid.p1, p2 = state.lineSolid.p2;
     const nP1 = (state.lineSolid.names && state.lineSolid.names.p1) || 'P1';
     const nP2 = (state.lineSolid.names && state.lineSolid.names.p2) || 'P2';
-    const solid = getSolidGeometryDefinition('line_solid');
+    const solid = activeSolid;
     const piercePts = state.lineSolid.lastPiercePts || [];
 
     // Contorno aparente del sólido en 2D diédrico
-    if (solid) {
-      const c = solid.c, R = solid.R, H = solid.H, y0 = solid.c.y || 0;
-      if (solid.type === 'cylinder') {
-        // PH: Base circular y cruz
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.40)";
-        ctx.lineWidth = 1.6;
-        ctx.arc(oX + c.x * sc, oY + c.z * sc, R * sc, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(2, 132, 199, 0.20)";
-        ctx.setLineDash([3, 3]);
-        ctx.moveTo(oX + (c.x - R - 0.6) * sc, oY + c.z * sc); ctx.lineTo(oX + (c.x + R + 0.6) * sc, oY + c.z * sc);
-        ctx.moveTo(oX + c.x * sc, oY + (c.z - R - 0.6) * sc); ctx.lineTo(oX + c.x * sc, oY + (c.z + R + 0.6) * sc);
-        ctx.stroke(); ctx.setLineDash([]);
-
-        // PV: Rectángulo y eje
-        const leftX = oX + (c.x - R) * sc, topY = oY - (y0 + H) * sc, botY = oY - y0 * sc;
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.40)";
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(leftX, topY, (2 * R) * sc, H * sc);
-
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(0, 56, 168, 0.30)";
-        ctx.setLineDash([7, 2, 2, 2]);
-        ctx.moveTo(oX + c.x * sc, botY + 6); ctx.lineTo(oX + c.x * sc, topY - 6);
-        ctx.stroke(); ctx.setLineDash([]);
-      }
+    if (solid && state.lineSolid.showSolid !== false) {
+      drawSolidProjectionPaths(ctx, solidPaths, { sc, oX, oY, oX_pp, has3rdProj, opacity: 0.40 });
     }
 
     // PV line (con tramo interior discontinuo si hay penetración)
@@ -1392,7 +1390,7 @@ function drawEpura2D() {
     ctx.fillText(`${nP2}2`, oX + p2.x * sc + 4, oY - p2.y * sc - 4);
     ctx.fillStyle = "#0284c7";
     ctx.fillText(`${nP1}1`, oX + p1.x * sc + 4, oY + p1.z * sc + 12);
-    ctx.fillText(`${nP2}1`, oX + p1.x * sc + 4, oY + p1.z * sc + 12);
+    ctx.fillText(`${nP2}1`, oX + p2.x * sc + 4, oY + p2.z * sc + 12);
 
     // Puntos de penetración
     if (piercePts.length > 0) {

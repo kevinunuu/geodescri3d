@@ -96,7 +96,10 @@ const planePresets = {
 
 // Referencias de escena y cámaras 3D principales
 let scene, camera, renderer, controls, mainObjectsGroup, planesGroup, epuraCanvas, epuraCtx;
-const DIHEDRAL_CENTER = new THREE.Vector3(0, 4.5, 4.5);
+// Allow the state module to load even if the external Three.js dependency fails.
+const DIHEDRAL_CENTER = typeof THREE !== 'undefined'
+  ? new THREE.Vector3(0, 4.5, 4.5)
+  : { x: 0, y: 4.5, z: 4.5 };
 let cameraAnimId = null;
 
 // Conversor de subíndices diédricos
@@ -107,4 +110,10 @@ function formatGeomLabel(str) {
     .replace(/([A-Za-zα-ωΑ-Ω])([0-9])([123])$/, (_, p, d, s) => p + (subs[d] || d) + (subs[s] || s))
     .replace(/([A-Za-zα-ωΑ-Ω])([123])$/, (_, p, s) => p + (subs[s] || s))
     .replace(/([A-Za-zα-ωΑ-Ω])([0-9])$/, (_, p, s) => p + (subs[s] || s));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
 }

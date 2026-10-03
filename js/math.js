@@ -90,7 +90,7 @@ function getSolidGeometryDefinition(mode = 'intersection') {
   if (typeof cfg.solidType === 'string' && cfg.solidType.startsWith('custom_')) {
     const fig = (state.customFigures || []).find(f => f.id === cfg.solidType);
     if (fig) {
-      const figH = fig.H || H, figR = fig.R || 3.2, N = fig.sides || 4;
+      const figH = fig.H ?? H, figR = fig.R ?? 3.2, N = fig.sides ?? 4;
       const basePlane = fig.basePlane || 'PH';
       const X0 = fig.posX !== undefined ? fig.posX : 0.0;
       const Y0 = fig.posY !== undefined ? fig.posY : (basePlane === 'PV' ? 4.5 : 0.0);
@@ -126,7 +126,7 @@ function getSolidGeometryDefinition(mode = 'intersection') {
       }
       if (fig.type === 'prism_reg' || fig.type === 'prism_oblique') {
         const slant = fig.type === 'prism_oblique'
-          ? { x: fig.slantX || 2.0, y: (basePlane === 'PV' ? (fig.slantZ || -2.0) : 0), z: (basePlane === 'PH' ? (fig.slantZ || -2.0) : 0) }
+          ? { x: fig.slantX ?? 2.0, y: (basePlane === 'PV' ? (fig.slantZ ?? -2.0) : 0), z: (basePlane === 'PH' ? (fig.slantZ ?? -2.0) : 0) }
           : { x: 0, y: 0, z: 0 };
         const top = bottom.map(p => ({
           x: p.x + slant.x,
@@ -484,7 +484,8 @@ function computeSolidIntersection(solid, eq) {
   } else if (solid.type === 'cone') {
     isOrderedBoundary = true;
     const c = solid.c, R = solid.R, H = solid.H;
-    const apex = { x: c.x, y: H, z: c.z };
+    const baseY = c.y ?? 0;
+    const apex = solid.apex || { x: c.x, y: baseY + H, z: c.z };
     const dApex = evalPt(apex);
     const L = Math.hypot(A, C);
 
@@ -493,7 +494,7 @@ function computeSolidIntersection(solid, eq) {
     let a1 = 0, a2 = 0;
 
     if (L > 1e-7) {
-      const d0 = (A * c.x + C * c.z + D) / L;
+      const d0 = (A * c.x + B * baseY + C * c.z + D) / L;
       if (Math.abs(d0) <= R * 0.999999) {
         cutsBase = true;
         const h0 = Math.sqrt(Math.max(0, R * R - d0 * d0));
@@ -501,8 +502,8 @@ function computeSolidIntersection(solid, eq) {
         const px = c.x - d0 * nx, pz = c.z - d0 * nz;
         const tx = -nz, tz = nx;
 
-        pBase1 = new THREE.Vector3(px + h0 * tx, 0, pz + h0 * tz);
-        pBase2 = new THREE.Vector3(px - h0 * tx, 0, pz - h0 * tz);
+        pBase1 = new THREE.Vector3(px + h0 * tx, baseY, pz + h0 * tz);
+        pBase2 = new THREE.Vector3(px - h0 * tx, baseY, pz - h0 * tz);
         a1 = Math.atan2(pBase1.z - c.z, pBase1.x - c.x);
         a2 = Math.atan2(pBase2.z - c.z, pBase2.x - c.x);
       }
@@ -511,30 +512,33 @@ function computeSolidIntersection(solid, eq) {
     if (cutsBase) {
       if (Math.abs(dApex) < 1e-6) {
         const K = 12;
+        // Cuando el plano pasa por el vértice, la sección es un triángulo.
+        // results también alimenta el cálculo de perímetro, por lo que sus
+        // puntos deben recorrer pBase1 -> vértice -> pBase2 -> pBase1.
         for (let i = 0; i <= K; i++) {
           const s = i / K;
           results.push({
-            pt: new THREE.Vector3(pBase1.x + s * (pBase2.x - pBase1.x), 0, pBase1.z + s * (pBase2.z - pBase1.z)),
-            name3D: (i === 0 ? 'S1' : (i === K ? 'S2' : '')),
-            namePV: (i === 0 ? 'S12' : (i === K ? 'S22' : '')),
-            namePH: (i === 0 ? 'S11' : (i === K ? 'S21' : '')),
-            type: 'base'
+            pt: new THREE.Vector3(pBase1.x + s * (apex.x - pBase1.x), baseY + s * (apex.y - baseY), pBase1.z + s * (apex.z - pBase1.z)),
+            name3D: (i === 0 ? 'S1' : (i === K ? 'SV' : '')),
+            namePV: (i === 0 ? 'S12' : (i === K ? 'SV2' : '')),
+            namePH: (i === 0 ? 'S11' : (i === K ? 'SV1' : '')),
+            type: (i === K ? 'apex' : 'edge')
           });
         }
         for (let i = 1; i <= K; i++) {
           const s = i / K;
           results.push({
-            pt: new THREE.Vector3(pBase1.x + s * (apex.x - pBase1.x), s * H, pBase1.z + s * (apex.z - pBase1.z)),
-            name3D: (i === K ? 'SV' : ''),
-            namePV: (i === K ? 'SV2' : ''),
-            namePH: (i === K ? 'SV1' : ''),
-            type: (i === K ? 'apex' : 'edge')
+            pt: new THREE.Vector3(apex.x + s * (pBase2.x - apex.x), apex.y + s * (baseY - apex.y), apex.z + s * (pBase2.z - apex.z)),
+            name3D: (i === K ? 'S2' : ''),
+            namePV: (i === K ? 'S22' : ''),
+            namePH: (i === K ? 'S21' : ''),
+            type: 'edge'
           });
         }
         for (let i = 1; i < K; i++) {
           const s = i / K;
           results.push({
-            pt: new THREE.Vector3(pBase2.x + s * (apex.x - pBase2.x), s * H, pBase2.z + s * (apex.z - pBase2.z)),
+            pt: new THREE.Vector3(pBase2.x + s * (pBase1.x - pBase2.x), baseY, pBase2.z + s * (pBase1.z - pBase2.z)),
             name3D: '', namePV: '', namePH: '', type: 'edge'
           });
         }
@@ -544,7 +548,7 @@ function computeSolidIntersection(solid, eq) {
         while (dAngle >= 2 * Math.PI) dAngle -= 2 * Math.PI;
 
         const mid1 = a1 + dAngle / 2;
-        const bPtMid1 = { x: c.x + R * Math.cos(mid1), y: 0, z: c.z + R * Math.sin(mid1) };
+        const bPtMid1 = { x: c.x + R * Math.cos(mid1), y: baseY, z: c.z + R * Math.sin(mid1) };
         const dMid1 = evalPt(bPtMid1);
 
         let startAngle, sweepAngle;
@@ -554,11 +558,15 @@ function computeSolidIntersection(solid, eq) {
           startAngle = a2; sweepAngle = 2 * Math.PI - dAngle;
         }
 
+        const startsAtBase1 = Math.abs(startAngle - a1) < 1e-7 || Math.abs(Math.abs(startAngle - a1) - 2 * Math.PI) < 1e-7;
+        const arcStartPt = startsAtBase1 ? pBase1 : pBase2;
+        const arcEndPt = startsAtBase1 ? pBase2 : pBase1;
+
         const M = 64;
         for (let i = 0; i <= M; i++) {
           const theta = startAngle + (i / M) * sweepAngle;
-          const bPt = { x: c.x + R * Math.cos(theta), y: 0, z: c.z + R * Math.sin(theta) };
-          const pt = (i === 0) ? pBase1.clone() : ((i === M) ? pBase2.clone() : intersectSeg(bPt, apex));
+          const bPt = { x: c.x + R * Math.cos(theta), y: baseY, z: c.z + R * Math.sin(theta) };
+          const pt = (i === 0) ? arcStartPt.clone() : ((i === M) ? arcEndPt.clone() : intersectSeg(bPt, apex));
           if (pt) {
             const isKey = (i === 0 || i === M || i === Math.floor(M / 2));
             let tagIdx = 1;
@@ -578,7 +586,7 @@ function computeSolidIntersection(solid, eq) {
         for (let i = 1; i < K; i++) {
           const s = i / K;
           results.push({
-            pt: new THREE.Vector3(pBase2.x + s * (pBase1.x - pBase2.x), 0, pBase2.z + s * (pBase1.z - pBase2.z)),
+            pt: new THREE.Vector3(arcEndPt.x + s * (arcStartPt.x - arcEndPt.x), baseY, arcEndPt.z + s * (arcStartPt.z - arcEndPt.z)),
             name3D: '', namePV: '', namePH: '', type: 'base'
           });
         }
@@ -587,7 +595,7 @@ function computeSolidIntersection(solid, eq) {
       const N = 72;
       for (let i = 0; i < N; i++) {
         const angle = (i * 2 * Math.PI) / N;
-        const bPt = { x: c.x + R * Math.cos(angle), y: 0, z: c.z + R * Math.sin(angle) };
+        const bPt = { x: c.x + R * Math.cos(angle), y: baseY, z: c.z + R * Math.sin(angle) };
         const pt = intersectSeg(bPt, apex);
         if (pt) {
           const isKey = (i % 18 === 0);
@@ -604,25 +612,26 @@ function computeSolidIntersection(solid, eq) {
     }
   } else if (solid.type === 'cylinder') {
     const c = solid.c, R = solid.R, H = solid.H;
+    const baseY = c.y ?? 0;
     const L = Math.hypot(A, C);
 
     if (Math.abs(B) < 1e-7) {
       if (L > 1e-7) {
-        const d0 = (A * c.x + C * c.z + D) / L;
+        const d0 = (A * c.x + B * baseY + C * c.z + D) / L;
         if (Math.abs(d0) <= R * 0.999999) {
           const h0 = Math.sqrt(Math.max(0, R * R - d0 * d0));
           const nx = A / L, nz = C / L;
           const px = c.x - d0 * nx, pz = c.z - d0 * nz;
           const tx = -nz, tz = nx;
-          const p1 = new THREE.Vector3(px + h0 * tx, 0, pz + h0 * tz);
-          const p2 = new THREE.Vector3(px - h0 * tx, 0, pz - h0 * tz);
+          const p1 = new THREE.Vector3(px + h0 * tx, baseY, pz + h0 * tz);
+          const p2 = new THREE.Vector3(px - h0 * tx, baseY, pz - h0 * tz);
           const K = 12;
           for (let i = 0; i <= K; i++) {
             const s = i / K;
-            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), 0, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S1' : (i === K ? 'S2' : '')), namePV: (i === 0 ? 'S12' : (i === K ? 'S22' : '')), namePH: (i === 0 ? 'S11' : (i === K ? 'S21' : '')), type: 'base' });
-            results.push({ pt: new THREE.Vector3(p1.x, s * H, p1.z), name3D: (i === K ? 'S4' : ''), namePV: (i === K ? 'S42' : ''), namePH: (i === K ? 'S41' : ''), type: 'edge' });
-            results.push({ pt: new THREE.Vector3(p2.x, s * H, p2.z), name3D: (i === K ? 'S3' : ''), namePV: (i === K ? 'S32' : ''), namePH: (i === K ? 'S31' : ''), type: 'edge' });
-            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), H, p1.z + s * (p2.z - p1.z)), name3D: '', namePV: '', namePH: '', type: 'base' });
+            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), baseY, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S1' : (i === K ? 'S2' : '')), namePV: (i === 0 ? 'S12' : (i === K ? 'S22' : '')), namePH: (i === 0 ? 'S11' : (i === K ? 'S21' : '')), type: 'base' });
+            results.push({ pt: new THREE.Vector3(p1.x, baseY + s * H, p1.z), name3D: (i === K ? 'S4' : ''), namePV: (i === K ? 'S42' : ''), namePH: (i === K ? 'S41' : ''), type: 'edge' });
+            results.push({ pt: new THREE.Vector3(p2.x, baseY + s * H, p2.z), name3D: (i === K ? 'S3' : ''), namePV: (i === K ? 'S32' : ''), namePH: (i === K ? 'S31' : ''), type: 'edge' });
+            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), baseY + H, p1.z + s * (p2.z - p1.z)), name3D: '', namePV: '', namePH: '', type: 'base' });
           }
         }
       }
@@ -633,11 +642,11 @@ function computeSolidIntersection(solid, eq) {
         const x = c.x + R * Math.cos(theta);
         const z = c.z + R * Math.sin(theta);
         const y = -(A * x + C * z + D) / B;
-        if (y >= -1e-4 && y <= H + 1e-4) {
+        if (y >= baseY - 1e-4 && y <= baseY + H + 1e-4) {
           const isKey = (i % 24 === 0);
           const tagIdx = Math.floor(i / 24) + 1;
           results.push({
-            pt: new THREE.Vector3(x, Math.max(0, Math.min(H, y)), z),
+            pt: new THREE.Vector3(x, Math.max(baseY, Math.min(baseY + H, y)), z),
             name3D: isKey ? (`S${tagIdx}`) : '',
             namePV: isKey ? (`S${tagIdx}2`) : '',
             namePH: isKey ? (`S${tagIdx}1`) : '',
@@ -647,34 +656,34 @@ function computeSolidIntersection(solid, eq) {
       }
       let cutsCylinderBase = false;
       if (L > 1e-7) {
-        const d0 = (A * c.x + C * c.z + D) / L;
+         const d0 = (A * c.x + B * baseY + C * c.z + D) / L;
         if (Math.abs(d0) <= R * 0.999999) {
           cutsCylinderBase = true;
           const h0 = Math.sqrt(Math.max(0, R * R - d0 * d0));
           const nx = A / L, nz = C / L;
           const px = c.x - d0 * nx, pz = c.z - d0 * nz;
           const tx = -nz, tz = nx;
-          const p1 = new THREE.Vector3(px + h0 * tx, 0, pz + h0 * tz);
-          const p2 = new THREE.Vector3(px - h0 * tx, 0, pz - h0 * tz);
+          const p1 = new THREE.Vector3(px + h0 * tx, baseY, pz + h0 * tz);
+          const p2 = new THREE.Vector3(px - h0 * tx, baseY, pz - h0 * tz);
           const K = 12;
           for (let i = 0; i <= K; i++) {
             const s = i / K;
-            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), 0, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S1' : (i === K ? 'S2' : '')), namePV: (i === 0 ? 'S12' : (i === K ? 'S22' : '')), namePH: (i === 0 ? 'S11' : (i === K ? 'S21' : '')), type: 'base' });
+            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), baseY, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S1' : (i === K ? 'S2' : '')), namePV: (i === 0 ? 'S12' : (i === K ? 'S22' : '')), namePH: (i === 0 ? 'S11' : (i === K ? 'S21' : '')), type: 'base' });
           }
         }
-        const dH = (A * c.x + B * H + C * c.z + D) / L;
+        const dH = (A * c.x + B * (baseY + H) + C * c.z + D) / L;
         if (Math.abs(dH) <= R * 0.999999) {
           cutsCylinderBase = true;
           const hH = Math.sqrt(Math.max(0, R * R - dH * dH));
           const nx = A / L, nz = C / L;
           const px = c.x - dH * nx, pz = c.z - dH * nz;
           const tx = -nz, tz = nx;
-          const p1 = new THREE.Vector3(px + hH * tx, H, pz + hH * tz);
-          const p2 = new THREE.Vector3(px - hH * tx, H, pz - hH * tz);
+          const p1 = new THREE.Vector3(px + hH * tx, baseY + H, pz + hH * tz);
+          const p2 = new THREE.Vector3(px - hH * tx, baseY + H, pz - hH * tz);
           const K = 12;
           for (let i = 0; i <= K; i++) {
             const s = i / K;
-            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), H, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S3' : (i === K ? 'S4' : '')), namePV: (i === 0 ? 'S32' : (i === K ? 'S42' : '')), namePH: (i === 0 ? 'S31' : (i === K ? 'S41' : '')), type: 'base' });
+            results.push({ pt: new THREE.Vector3(p1.x + s * (p2.x - p1.x), baseY + H, p1.z + s * (p2.z - p1.z)), name3D: (i === 0 ? 'S3' : (i === K ? 'S4' : '')), namePV: (i === 0 ? 'S32' : (i === K ? 'S42' : '')), namePH: (i === 0 ? 'S31' : (i === K ? 'S41' : '')), type: 'base' });
           }
         }
       }
@@ -704,21 +713,38 @@ function computeSolidIntersection(solid, eq) {
   return { items: unique, center };
 }
 
+function validateLineGeometry(p1, p2, type) {
+  const eps = 0.2;
+  const dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z;
+  if (Math.hypot(dx, dy, dz) < eps) return { title: 'Puntos coincidentes', message: 'La recta degenera en un punto.' };
+
+  if (type === 'oblique') {
+    if (Math.abs(dy) <= eps && Math.abs(dz) <= eps) return { title: 'Incoherencia', message: 'Degenera en paralela a L.T.' };
+    if (Math.abs(dy) <= eps) return { title: 'Incoherencia', message: 'Se convierte en Horizontal.' };
+    if (Math.abs(dz) <= eps) return { title: 'Incoherencia', message: 'Se convierte en Frontal.' };
+    if (Math.abs(dx) <= eps) return { title: 'Incoherencia', message: 'Se convierte en De perfil.' };
+  } else if (type === 'horizontal' && Math.abs(dy) > eps) {
+    return { title: 'Incoherencia', message: 'Cota (Y) debe ser constante.' };
+  } else if (type === 'frontal' && Math.abs(dz) > eps) {
+    return { title: 'Incoherencia', message: 'Alejamiento (Z) debe ser constante.' };
+  } else if (type === 'parallel_lt' && (Math.abs(dy) > eps || Math.abs(dz) > eps)) {
+    return { title: 'Incoherencia', message: 'Cota (Y) y alejamiento (Z) deben ser constantes.' };
+  } else if (type === 'point' && (Math.abs(dx) > eps || Math.abs(dy) > eps)) {
+    return { title: 'Incoherencia', message: 'Una recta de punta debe tener X e Y constantes.' };
+  } else if (type === 'vertical' && (Math.abs(dx) > eps || Math.abs(dz) > eps)) {
+    return { title: 'Incoherencia', message: 'Una recta vertical debe tener X y Z constantes.' };
+  } else if (type === 'profile' && Math.abs(dx) > eps) {
+    return { title: 'Incoherencia', message: 'Una recta de perfil debe tener X constante.' };
+  }
+  return null;
+}
+
 // Validación geométrica de invariantes para rectas, planos e intersecciones
 function validateCurrentGeometry() {
   const eps = 0.2;
   if (state.mode === 'lines') {
     const { p1, p2 } = state.line;
-    const dx = p2.x - p1.x, dy = p2.y - p1.y, dz = p2.z - p1.z, t = state.lineType;
-    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < eps) return { title: 'Puntos coincidentes', message: 'La recta degenera en un punto.' };
-    if (t === 'oblique') {
-      if (Math.abs(dy) <= eps && Math.abs(dz) <= eps) return { title: 'Incoherencia', message: 'Degenera en paralela a L.T.' };
-      if (Math.abs(dy) <= eps) return { title: 'Incoherencia', message: 'Se convierte en Horizontal.' };
-      if (Math.abs(dz) <= eps) return { title: 'Incoherencia', message: 'Se convierte en Frontal.' };
-      if (Math.abs(dx) <= eps) return { title: 'Incoherencia', message: 'Se convierte en De perfil.' };
-    }
-    if (t === 'horizontal' && Math.abs(dy) > eps) return { title: 'Incoherencia', message: 'Cota (Y) debe ser constante.' };
-    if (t === 'frontal' && Math.abs(dz) > eps) return { title: 'Incoherencia', message: 'Alejamiento (Z) debe ser constante.' };
+    return validateLineGeometry(p1, p2, state.lineType);
   } else if (state.mode === 'planes') {
     const { p1, p2, p3 } = state.plane;
     const eq = computePlaneEquation(p1, p2, p3);
@@ -800,13 +826,18 @@ function validateCurrentGeometry() {
       if (Math.abs(cfg.cutAngleBeta) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Frontal (0°).' };
       if (Math.abs(Math.abs(cfg.cutAngleBeta) - 90) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió de Perfil (90°).' };
     } else if (t === 'parallel_lt') {
-      if (Math.abs(cfg.cutAngle) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Horizontal (0°).' };
-      if (Math.abs(Math.abs(cfg.cutAngle) - 90) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Frontal (90°).' };
+      // In this parameterization α=0 gives z=constant (frontal), while
+      // α=90 gives y=constant (horizontal).
+      if (Math.abs(cfg.cutAngle) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Frontal (0°).' };
+      if (Math.abs(Math.abs(cfg.cutAngle) - 90) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Horizontal (90°).' };
     } else if (t === 'oblique') {
       if (Math.abs(cfg.cutAngle) < epsAng && Math.abs(cfg.cutAngleBeta) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Horizontal (0°).' };
       if (Math.abs(cfg.cutAngle) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Vertical (proyectante horizontal).' };
       if (Math.abs(cfg.cutAngleBeta) < epsAng) return { title: 'Incoherencia', message: 'El plano se volvió Plano de Canto.' };
     }
+  } else if (state.mode === 'line_solid') {
+    const { p1, p2 } = state.lineSolid;
+    return validateLineGeometry(p1, p2, state.lineSolid.lineType);
   }
   return null;
 }
@@ -1051,4 +1082,3 @@ function computePlaneGiro(eq, points) {
     area
   };
 }
-

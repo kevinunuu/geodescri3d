@@ -19,8 +19,8 @@ function updateLineAnalysisMetrics(p1, p2, nA, nB) {
   const leg = document.getElementById('legendList');
   if (leg) {
     leg.innerHTML = `
-      <li><span class="text-blue-700 font-bold">${nA}:</span> (${p1.x.toFixed(1)}, ${p1.y.toFixed(1)}, ${p1.z.toFixed(1)})</li>
-      <li><span class="text-blue-700 font-bold">${nB}:</span> (${p2.x.toFixed(1)}, ${p2.y.toFixed(1)}, ${p2.z.toFixed(1)})</li>
+      <li><span class="text-blue-700 font-bold">${escapeHtml(nA)}:</span> (${p1.x.toFixed(1)}, ${p1.y.toFixed(1)}, ${p1.z.toFixed(1)})</li>
+      <li><span class="text-blue-700 font-bold">${escapeHtml(nB)}:</span> (${p2.x.toFixed(1)}, ${p2.y.toFixed(1)}, ${p2.z.toFixed(1)})</li>
     `;
   }
 }
@@ -36,9 +36,9 @@ function updatePlaneAnalysisMetrics(eq) {
   const leg = document.getElementById('legendList');
   if (leg) {
     leg.innerHTML = `
-      <li><span class="text-blue-700 font-bold">${nA}:</span> (${state.plane.p1.x.toFixed(1)}, ${state.plane.p1.y.toFixed(1)}, ${state.plane.p1.z.toFixed(1)})</li>
-      <li><span class="text-blue-700 font-bold">${nB}:</span> (${state.plane.p2.x.toFixed(1)}, ${state.plane.p2.y.toFixed(1)}, ${state.plane.p2.z.toFixed(1)})</li>
-      <li><span class="text-blue-700 font-bold">${nC}:</span> (${state.plane.p3.x.toFixed(1)}, ${state.plane.p3.y.toFixed(1)}, ${state.plane.p3.z.toFixed(1)})</li>
+      <li><span class="text-blue-700 font-bold">${escapeHtml(nA)}:</span> (${state.plane.p1.x.toFixed(1)}, ${state.plane.p1.y.toFixed(1)}, ${state.plane.p1.z.toFixed(1)})</li>
+      <li><span class="text-blue-700 font-bold">${escapeHtml(nB)}:</span> (${state.plane.p2.x.toFixed(1)}, ${state.plane.p2.y.toFixed(1)}, ${state.plane.p2.z.toFixed(1)})</li>
+      <li><span class="text-blue-700 font-bold">${escapeHtml(nC)}:</span> (${state.plane.p3.x.toFixed(1)}, ${state.plane.p3.y.toFixed(1)}, ${state.plane.p3.z.toFixed(1)})</li>
     `;
   }
 }
@@ -59,7 +59,7 @@ function updateSectionAnalysisMetrics(items, solid) {
   const listToShow = keyItems.length > 0 ? keyItems : items.slice(0, 6);
   const leg = document.getElementById('legendList');
   if (leg) {
-    leg.innerHTML = listToShow.map(it => `<li><span class="text-blue-700 font-bold">${it.name3D || 'P'}:</span> (${it.pt.x.toFixed(1)}, ${it.pt.y.toFixed(1)}, ${it.pt.z.toFixed(1)})</li>`).join('');
+     leg.innerHTML = listToShow.map(it => `<li><span class="text-blue-700 font-bold">${escapeHtml(it.name3D || 'P')}:</span> (${it.pt.x.toFixed(1)}, ${it.pt.y.toFixed(1)}, ${it.pt.z.toFixed(1)})</li>`).join('');
   }
 }
 
@@ -76,8 +76,8 @@ function updateLineSolidAnalysisMetrics(v1, v2, piercePts) {
     `;
   }
   let legendHtml = `
-    <li><span class="text-blue-700 font-bold">${nP1}:</span> (${v1.x.toFixed(1)}, ${v1.y.toFixed(1)}, ${v1.z.toFixed(1)})</li>
-    <li><span class="text-blue-700 font-bold">${nP2}:</span> (${v2.x.toFixed(1)}, ${v2.y.toFixed(1)}, ${v2.z.toFixed(1)})</li>
+     <li><span class="text-blue-700 font-bold">${escapeHtml(nP1)}:</span> (${v1.x.toFixed(1)}, ${v1.y.toFixed(1)}, ${v1.z.toFixed(1)})</li>
+     <li><span class="text-blue-700 font-bold">${escapeHtml(nP2)}:</span> (${v2.x.toFixed(1)}, ${v2.y.toFixed(1)}, ${v2.z.toFixed(1)})</li>
   `;
   if (piercePts.length >= 2) {
     legendHtml += `
@@ -552,7 +552,27 @@ const planeCoupling = (val, prop, ptKey, prevVal) => {
 // --- Inicialización Principal (Window OnLoad) ---
 
 window.onload = function() {
-  initThree();
+  const errorBanner = document.getElementById('errorAlertBanner');
+  const errorText = document.getElementById('errorMessageText');
+  const showStartupError = (message) => {
+    if (errorBanner) errorBanner.classList.remove('hidden');
+    if (errorText) errorText.textContent = message;
+    const autoCorrect = document.getElementById('btnAutoCorrect');
+    if (autoCorrect) autoCorrect.classList.add('hidden');
+  };
+
+  if (!window.THREE || typeof THREE.WebGLRenderer !== 'function' || typeof THREE.OrbitControls !== 'function') {
+    showStartupError('No se pudo cargar el motor 3D. Comprueba tu conexión y recarga la página.');
+    return;
+  }
+
+  try {
+    initThree();
+  } catch (error) {
+    console.error('GeoDescri3D: no se pudo inicializar la escena 3D.', error);
+    showStartupError('No se pudo iniciar la escena 3D. El navegador puede no admitir WebGL.');
+    return;
+  }
   updateSectionLabelsButtonUI();
   updatePlaneLabelsButtonUI();
 
@@ -914,7 +934,7 @@ window.onload = function() {
         }
       }
       if (best) {
-        tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${best.title}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.join('<br>')}</div>`;
+        tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${escapeHtml(best.title)}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.map(escapeHtml).join('<br>')}</div>`;
         const tipW = 220, tipH = 65;
         const left = Math.max(10, Math.min(rect.width - tipW, mx + 14));
         const top = Math.max(10, Math.min(rect.height - tipH, my + 14));
@@ -988,7 +1008,7 @@ window.onload = function() {
           const tooltip = document.getElementById('epuraHoverTooltip');
           if (tooltip) {
             if (best) {
-              tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${best.title}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.join('<br>')}</div>`;
+              tooltip.innerHTML = `<div class="font-bold text-sky-300 text-[11px] mb-0.5">${escapeHtml(best.title)}</div><div class="text-slate-200 text-[10px] leading-tight">${best.lines.map(escapeHtml).join('<br>')}</div>`;
               const tipW = 200, tipH = 60;
               const left = Math.max(6, Math.min(rect.width - tipW - 6, mx - tipW / 2));
               const top = Math.max(6, my - tipH - 12);

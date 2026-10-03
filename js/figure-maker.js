@@ -18,11 +18,15 @@ function loadCustomFigures() {
   try {
     const saved = localStorage.getItem('geoweb_custom_figures');
     if (saved) {
-      state.customFigures = JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      state.customFigures = Array.isArray(parsed)
+        ? parsed.filter(fig => fig && typeof fig === 'object' && typeof fig.id === 'string' && typeof fig.type === 'string')
+        : [];
     }
   } catch (e) {
     state.customFigures = [];
   }
+  if (!Array.isArray(state.customFigures)) state.customFigures = [];
   const badge = document.getElementById('badgeCustomCount');
   if (badge) badge.textContent = (state.customFigures || []).length;
 }
@@ -53,8 +57,12 @@ function updateSolidDropdowns() {
 function renderCustomFiguresList() {
   const listEl = document.getElementById('customFiguresList');
   if (!listEl) return;
+  listEl.replaceChildren();
   if (!state.customFigures || state.customFigures.length === 0) {
-    listEl.innerHTML = '<p class="text-slate-400 text-center text-[11px] py-2">No has guardado figuras aún.</p>';
+    const empty = document.createElement('p');
+    empty.className = 'text-slate-400 text-center text-[11px] py-2';
+    empty.textContent = 'No has guardado figuras aún.';
+    listEl.appendChild(empty);
     return;
   }
   const typeMap = {
@@ -65,24 +73,38 @@ function renderCustomFiguresList() {
     cylinder: 'Cilindro Recto',
     cone: 'Cono Recto'
   };
-  listEl.innerHTML = state.customFigures.map(fig => {
+  state.customFigures.forEach(fig => {
     const planeBadge = fig.basePlane === 'PV' ? '<span class="text-blue-700 font-bold">Base: PV</span>' : '<span class="text-sky-600 font-bold">Base: PH</span>';
     const desc = fig.type === 'cylinder' || fig.type === 'cone'
       ? `${typeMap[fig.type] || fig.type} | ${planeBadge} | H:${fig.H}u R:${fig.R}u`
       : `${typeMap[fig.type] || fig.type} (${fig.sides}L) | ${planeBadge} | H:${fig.H}u R:${fig.R}u`;
-    return `
-      <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-blue-100 hover:border-blue-300 transition">
-        <div class="overflow-hidden pr-2">
-          <div class="font-bold text-slate-800 text-xs truncate">${fig.name}</div>
-          <div class="text-[10px] text-slate-500 font-mono">${desc}</div>
-        </div>
-        <div class="flex items-center gap-1 shrink-0">
-          <button onclick="useCustomFigure('${fig.id}')" class="px-2 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold shadow-sm transition">Usar</button>
-          <button onclick="deleteCustomFigure('${fig.id}')" class="w-6 h-6 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition" title="Eliminar"><i class="fa-solid fa-trash text-[10px]"></i></button>
-        </div>
-      </div>
-    `;
-  }).join('');
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-blue-100 hover:border-blue-300 transition';
+    const info = document.createElement('div');
+    info.className = 'overflow-hidden pr-2';
+    const name = document.createElement('div');
+    name.className = 'font-bold text-slate-800 text-xs truncate';
+    name.textContent = fig.name || 'Figura sin nombre';
+    const description = document.createElement('div');
+    description.className = 'text-[10px] text-slate-500 font-mono';
+    description.textContent = desc.replace(/<[^>]*>/g, '');
+    info.append(name, description);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center gap-1 shrink-0';
+    const useButton = document.createElement('button');
+    useButton.className = 'px-2 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold shadow-sm transition';
+    useButton.textContent = 'Usar';
+    useButton.addEventListener('click', () => window.useCustomFigure(fig.id));
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'w-6 h-6 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition';
+    deleteButton.title = 'Eliminar';
+    deleteButton.innerHTML = '<i class="fa-solid fa-trash text-[10px]"></i>';
+    deleteButton.addEventListener('click', () => window.deleteCustomFigure(fig.id));
+    actions.append(useButton, deleteButton);
+    row.append(info, actions);
+    listEl.appendChild(row);
+  });
 }
 
 window.useCustomFigure = function(id) {
@@ -91,6 +113,7 @@ window.useCustomFigure = function(id) {
     const sel = document.getElementById('selectSolidType');
     if (sel) sel.value = id;
   } else {
+    if (state.mode !== 'line_solid' && typeof switchMode === 'function') switchMode('line_solid');
     state.lineSolid.solidType = id;
     const sel = document.getElementById('selectLSSolidType');
     if (sel) sel.value = id;
@@ -130,7 +153,8 @@ function getModalFigureDefinition() {
   const slantZ = parseFloat(document.getElementById('newFigSlantZ')?.value) || 0.0;
   const posX = parseFloat(document.getElementById('newFigPosX')?.value) || 0.0;
   const posY = parseFloat(document.getElementById('newFigPosY')?.value) || 0.0;
-  const posZ = parseFloat(document.getElementById('newFigPosZ')?.value) || (basePlane === 'PV' ? 0.0 : 5.5);
+  const rawPosZ = parseFloat(document.getElementById('newFigPosZ')?.value);
+  const posZ = Number.isFinite(rawPosZ) ? rawPosZ : (basePlane === 'PV' ? 0.0 : 5.5);
 
   let customPoints = null;
   if (type !== 'cylinder' && type !== 'cone') {
@@ -401,6 +425,8 @@ function initFigureModal() {
   const typeSelect = document.getElementById('newFigType');
   const basePlaneSelect = document.getElementById('newFigBasePlane');
   const grpSides = document.getElementById('grpFigSides');
+  const grpFigSideCount = document.getElementById('grpFigSideCount');
+  const grpFigRadius = document.getElementById('grpFigRadius');
   const grpSlant = document.getElementById('grpFigSlant');
   const grpApex = document.getElementById('grpFigApex');
   const grpBasePoints = document.getElementById('grpFigBasePoints');
@@ -414,22 +440,30 @@ function initFigureModal() {
 
   function updateModalGroupsVisibility(type) {
     if (type === 'cylinder' || type === 'cone') {
-      if (grpSides) grpSides.classList.add('hidden');
+      if (grpSides) grpSides.classList.remove('hidden');
+      if (grpFigSideCount) grpFigSideCount.classList.add('hidden');
+      if (grpFigRadius) grpFigRadius.classList.remove('hidden');
       if (grpSlant) grpSlant.classList.add('hidden');
       if (grpApex) grpApex.classList.add('hidden');
       if (grpBasePoints) grpBasePoints.classList.add('hidden');
     } else if (type === 'prism_oblique') {
       if (grpSides) grpSides.classList.remove('hidden');
+      if (grpFigSideCount) grpFigSideCount.classList.remove('hidden');
+      if (grpFigRadius) grpFigRadius.classList.remove('hidden');
       if (grpSlant) grpSlant.classList.remove('hidden');
       if (grpApex) grpApex.classList.add('hidden');
       if (grpBasePoints) grpBasePoints.classList.remove('hidden');
     } else if (type === 'pyramid_irregular') {
       if (grpSides) grpSides.classList.remove('hidden');
+      if (grpFigSideCount) grpFigSideCount.classList.remove('hidden');
+      if (grpFigRadius) grpFigRadius.classList.remove('hidden');
       if (grpSlant) grpSlant.classList.add('hidden');
       if (grpApex) grpApex.classList.remove('hidden');
       if (grpBasePoints) grpBasePoints.classList.remove('hidden');
     } else {
       if (grpSides) grpSides.classList.remove('hidden');
+      if (grpFigSideCount) grpFigSideCount.classList.remove('hidden');
+      if (grpFigRadius) grpFigRadius.classList.remove('hidden');
       if (grpSlant) grpSlant.classList.add('hidden');
       if (grpApex) grpApex.classList.add('hidden');
       if (grpBasePoints) grpBasePoints.classList.remove('hidden');
@@ -446,7 +480,8 @@ function initFigureModal() {
     const R = parseFloat(document.getElementById('newFigRadius')?.value) || 3.2;
     const X0 = parseFloat(document.getElementById('newFigPosX')?.value) || 0.0;
     const Y0 = parseFloat(document.getElementById('newFigPosY')?.value) || 0.0;
-    const Z0 = parseFloat(document.getElementById('newFigPosZ')?.value) || (basePlane === 'PV' ? 0.0 : 5.5);
+    const rawZ0 = parseFloat(document.getElementById('newFigPosZ')?.value);
+    const Z0 = Number.isFinite(rawZ0) ? rawZ0 : (basePlane === 'PV' ? 0.0 : 5.5);
 
     if (badge) {
       badge.textContent = basePlane === 'PH' ? `(X, Z) en PH [Cota Y₀ = ${Y0}]` : `(X, Y) en PV [Alej. Z₀ = ${Z0}]`;
@@ -518,7 +553,8 @@ function initFigureModal() {
     const H = parseFloat(document.getElementById('newFigHeight')?.value) || 8.0;
     const X0 = parseFloat(document.getElementById('newFigPosX')?.value) || 0.0;
     const Y0 = parseFloat(document.getElementById('newFigPosY')?.value) || 0.0;
-    const Z0 = parseFloat(document.getElementById('newFigPosZ')?.value) || (basePlane === 'PV' ? 0.0 : 5.5);
+  const rawZ0 = parseFloat(document.getElementById('newFigPosZ')?.value);
+  const Z0 = Number.isFinite(rawZ0) ? rawZ0 : (basePlane === 'PV' ? 0.0 : 5.5);
 
     if (forceReset || !state.figureModalManualApex) {
       ax.value = X0.toFixed(2);
@@ -652,7 +688,7 @@ function initFigureModal() {
     if (el) {
       el.addEventListener('input', () => {
         if (!state.figureModalManualPoints && (id === 'newFigRadius' || id === 'newFigPosX' || id === 'newFigPosY' || id === 'newFigPosZ')) {
-          populateBasePointsInputs(false);
+          populateBasePointsInputs(true);
         }
         if (!state.figureModalManualApex && (id === 'newFigHeight' || id === 'newFigPosX' || id === 'newFigPosY' || id === 'newFigPosZ')) {
           syncApexInputs(false);
@@ -661,7 +697,7 @@ function initFigureModal() {
       });
       el.addEventListener('change', () => {
         if (!state.figureModalManualPoints && (id === 'newFigRadius' || id === 'newFigPosX' || id === 'newFigPosY' || id === 'newFigPosZ')) {
-          populateBasePointsInputs(false);
+          populateBasePointsInputs(true);
         }
         if (!state.figureModalManualApex && (id === 'newFigHeight' || id === 'newFigPosX' || id === 'newFigPosY' || id === 'newFigPosZ')) {
           syncApexInputs(false);
@@ -701,6 +737,7 @@ function initFigureModal() {
         const sel = document.getElementById('selectSolidType');
         if (sel) sel.value = fig.id;
       } else {
+        if (state.mode !== 'line_solid' && typeof switchMode === 'function') switchMode('line_solid');
         state.lineSolid.solidType = fig.id;
         const sel = document.getElementById('selectLSSolidType');
         if (sel) sel.value = fig.id;
